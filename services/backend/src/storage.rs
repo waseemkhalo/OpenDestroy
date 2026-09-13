@@ -10,11 +10,12 @@ use std::{
     time::Duration,
 };
 use tokio::sync::Semaphore;
+use zeroize::Zeroizing;
 
 pub struct Store {
     db: Arc<Mutex<Connection>>,
     permits: Arc<Semaphore>,
-    master: [u8; 32],
+    master: Zeroizing<[u8; 32]>,
 }
 fn seal(key: &[u8], aad: &[u8], bytes: &[u8]) -> Result<Vec<u8>, String> {
     let cipher = Aes256Gcm::new_from_slice(key).map_err(|_| "Invalid key")?;
@@ -28,7 +29,7 @@ fn seal(key: &[u8], aad: &[u8], bytes: &[u8]) -> Result<Vec<u8>, String> {
     );
     Ok(output)
 }
-fn open(key: &[u8], aad: &[u8], bytes: &[u8]) -> Result<Vec<u8>, String> {
+fn open(key: &[u8], aad: &[u8], bytes: &[u8]) -> Result<Zeroizing<Vec<u8>>, String> {
     if bytes.len() < 28 {
         return Err("Invalid encrypted record".into());
     }
@@ -41,10 +42,11 @@ fn open(key: &[u8], aad: &[u8], bytes: &[u8]) -> Result<Vec<u8>, String> {
                 aad,
             },
         )
+        .map(Zeroizing::new)
         .map_err(|_| "Record authentication failed".into())
 }
 impl Store {
-    pub fn new(path: &str, master: [u8; 32]) -> Result<Self, String> {
+    pub fn new(path: &str, master: Zeroizing<[u8; 32]>) -> Result<Self, String> {
         let mut db = Connection::open(path).map_err(|_| "Cannot open database")?;
         db.busy_timeout(Duration::from_secs(5))
             .map_err(|_| "Cannot configure database")?;
@@ -78,7 +80,7 @@ impl Store {
             .try_acquire_owned()
             .map_err(|_| "Storage busy")?;
         let db = self.db.clone();
-        let master = self.master;
+        let master = self.master.clone();
         tokio::task::spawn_blocking(move || {
             let _permit = permit;
             let mut db = db.lock().map_err(|_| "Storage unavailable")?;
@@ -99,7 +101,7 @@ impl Store {
         match row {
             None => Ok(serde_json::json!({})),
             Some((key, data)) => {
-                let key = open(master, format!("destroy:v1:key:{user}").as_bytes(), &key)?;
+                let key = open(master, format!("destroy:v1:key:{user}").as_bytes(), &*key)?;
                 let bytes = open(&key, format!("destroy:v1:data:{user}").as_bytes(), &data)?;
                 serde_json::from_slice(&bytes).map_err(|_| "Invalid personal data".into())
             }
@@ -120,12 +122,12 @@ impl Store {
             let tx = db.transaction_with_behavior(TransactionBehavior::Immediate).map_err(|_| "Storage busy")?;
             let mut value = Self::read_with(&tx, master, &user)?;
             let result = f(&mut value)?;
-            let bytes = serde_json::to_vec(&value).map_err(|_| "Invalid personal data")?;
+            let bytes = Zeroizing::new(serde_json::to_vec(&value).map_err(|_| "Invalid personal data")?);
             if bytes.len() > 1024 * 1024 { return Err("Personal data exceeds 1 MiB".into()); }
-            let mut key = [0; 32];
-            rand::thread_rng().fill_bytes(&mut key);
-            let wrapped = seal(master, format!("destroy:v1:key:{user}").as_bytes(), &key)?;
-            let encrypted = seal(&key, format!("destroy:v1:data:{user}").as_bytes(), &bytes)?;
+            let mut key = Zeroizing::new([0; 32]);
+            rand::thread_rng().fill_bytes(&mut *key);
+            let wrapped = seal(master, format!("destroy:v1:key:{user}").as_bytes(), &*key)?;
+            let encrypted = seal(&*key, format!("destroy:v1:data:{user}").as_bytes(), &bytes)?;
             tx.execute("INSERT INTO personal_data VALUES (?1,?2,?3) ON CONFLICT(user_id) DO UPDATE SET wrapped_key=excluded.wrapped_key,payload=excluded.payload",params![user,wrapped,encrypted]).map_err(|_| "Cannot save personal data")?;
             tx.commit().map_err(|_| "Cannot save personal data")?;
             Ok(result)
@@ -147,7 +149,7 @@ mod tests {
     use serde_json::json;
     #[tokio::test]
     async fn isolated_encrypted_and_deletable() {
-        let s = Store::new(":memory:", [7; 32]).unwrap();
+        let s = Store::new(":memory:", Zeroizing::new([7; 32])).unwrap();
         s.update("alice", |v| {
             v["secret"] = "private phrase".into();
             Ok(v.clone())
@@ -176,7 +178,7 @@ mod tests {
     }
     #[tokio::test]
     async fn rejected_update_leaves_previous_record_intact() {
-        let store = Store::new(":memory:", [9; 32]).unwrap();
+        let store = Store::new(":memory:", Zeroizing::new([9; 32])).unwrap();
         store
             .update("alice", |v| {
                 v["name"] = json!("original");

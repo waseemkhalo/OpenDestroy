@@ -14,6 +14,7 @@ use futures_util::StreamExt;
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::{collections::HashMap, sync::Arc};
+use zeroize::Zeroizing;
 type ApiResult = Result<Json<Value>, (StatusCode, Json<Value>)>;
 #[derive(Clone)]
 pub struct AppState {
@@ -512,12 +513,19 @@ fn parse_users(raw: &str) -> Result<HashMap<String, String>, &'static str> {
 }
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let encoded = std::env::var("DESTROY_DATA_KEY")
-        .map_err(|_| "Set DESTROY_DATA_KEY to a base64 encoded random 32-byte key")?;
-    let key: [u8; 32] = STANDARD
-        .decode(encoded)?
-        .try_into()
-        .map_err(|_| "DESTROY_DATA_KEY must be 32 bytes")?;
+    let key = {
+        let encoded = Zeroizing::new(
+            std::env::var("DESTROY_DATA_KEY")
+                .map_err(|_| "Set DESTROY_DATA_KEY to a base64 encoded random 32-byte key")?,
+        );
+        let decoded = Zeroizing::new(STANDARD.decode(encoded.as_bytes())?);
+        if decoded.len() != 32 {
+            return Err("DESTROY_DATA_KEY must be 32 bytes".into());
+        }
+        let mut key = Zeroizing::new([0u8; 32]);
+        key.copy_from_slice(&decoded);
+        key
+    };
     let users = parse_users(
         &std::env::var("DESTROY_USERS")
             .map_err(|_| "Set DESTROY_USERS to a JSON map of token SHA-256 hashes to user IDs")?,
@@ -577,7 +585,7 @@ mod tests {
         ]);
         router(AppState {
             http: reqwest::Client::new(),
-            store: Arc::new(storage::Store::new(":memory:", [3; 32]).unwrap()),
+            store: Arc::new(storage::Store::new(":memory:", Zeroizing::new([3; 32])).unwrap()),
             users: Arc::new(users),
             slots: Arc::new(tokio::sync::Semaphore::new(8)),
         })

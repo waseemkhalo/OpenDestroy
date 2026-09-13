@@ -14,7 +14,12 @@ serde_json = "1"
 base64 = "0.22"
 uuid = { version = "1", features = ["serde", "v4"] }
 sha2 = "0.10"
-aes-gcm = "0.10"
+aes-gcm = { version = "0.10", features = ["zeroize"] }
+# Zeroize the expanded cipher and authentication state as well as owned key buffers.
+aes = { version = "0.8", features = ["zeroize"] }
+ghash = { version = "0.5", features = ["zeroize"] }
+polyval = { version = "0.6", features = ["zeroize"] }
+zeroize = "1"
 rand = "0.8"
 rusqlite = { version = "0.32", features = ["bundled"] }
 regex-lite = "0.1"
