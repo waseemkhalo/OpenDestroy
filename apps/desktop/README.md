@@ -1,6 +1,6 @@
 # Destroy Dictation desktop
 
-This is the native community Mac app, with dictation settings and a separate recording HUD. It contains no agent workspace or managed cloud login.
+This is the native community Mac app, with dictation settings and a separate recording HUD.
 
 After setting up the local backend as described in the repository README:
 

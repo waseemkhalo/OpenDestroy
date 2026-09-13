@@ -1,0 +1,19 @@
+name: Bug report
+description: Report a dictation problem with a synthetic reproduction
+body:
+  - type: textarea
+    attributes:
+      label: What happened?
+      description: Include expected and actual behavior. Never include real transcripts or credentials.
+    validations:
+      required: true
+  - type: input
+    attributes:
+      label: Versions
+      description: Destroy version, macOS version, CPU architecture and target application/version.
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Reproduction
+      description: Use invented text. Include microphone, permissions, shortcut and error message.

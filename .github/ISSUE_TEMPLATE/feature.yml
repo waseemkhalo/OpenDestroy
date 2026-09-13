@@ -1,0 +1,9 @@
+name: Feature request
+description: Suggest a focused dictation improvement
+body:
+  - type: textarea
+    attributes:
+      label: Problem and desired behavior
+      description: Describe the writing task, current obstacle and proposed improvement.
+    validations:
+      required: true

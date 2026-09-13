@@ -1,0 +1,98 @@
+name: Prepare signed release draft
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  package:
+    environment: release
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [aarch64-apple-darwin, x86_64-apple-darwin]
+    runs-on: macos-14
+    env:
+      APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      APPLE_NOTARY_PROFILE: destroy-dictation-notary
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.DESTROY_UPDATER_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.DESTROY_UPDATER_PASSWORD }}
+      DESTROY_UPDATER_PUBLIC_KEY: ${{ vars.DESTROY_UPDATER_PUBLIC_KEY }}
+      DESTROY_UPDATE_URL: ${{ vars.DESTROY_UPDATE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - run: npm ci && npm run check && npm test && npm run build
+        working-directory: apps/desktop
+      - run: cargo test --locked --workspace
+      - run: python3 scripts/audit-public.py
+      - run: python3 -m unittest discover -s scripts -p 'test_*.py'
+      - name: Import credentials into an ephemeral Keychain
+        env:
+          CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
+          CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_API_KEY_BASE64: ${{ secrets.APPLE_API_KEY_BASE64 }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+        run: |
+          set -euo pipefail
+          umask 077
+          python3 - <<'PY'
+          import base64, os
+          from pathlib import Path
+          for key,name in [('CERTIFICATE_BASE64','destroy-signing.p12'),('APPLE_API_KEY_BASE64','destroy-dictation-notary.p8')]:
+              Path(os.environ['RUNNER_TEMP'],name).write_bytes(base64.b64decode(os.environ[key],validate=True))
+          PY
+          PASSWORD="$(openssl rand -hex 32)"
+          KEYCHAIN="$RUNNER_TEMP/destroy-dictation-release.keychain-db"
+          security create-keychain -p "$PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$PASSWORD" "$KEYCHAIN"
+          security import "$RUNNER_TEMP/destroy-signing.p12" -k "$KEYCHAIN" -P "$CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$PASSWORD" "$KEYCHAIN"
+          security list-keychains -d user -s "$KEYCHAIN"
+          security default-keychain -d user -s "$KEYCHAIN"
+          xcrun notarytool store-credentials destroy-dictation-notary --key "$RUNNER_TEMP/destroy-dictation-notary.p8" --key-id "$APPLE_API_KEY_ID" --issuer "$APPLE_API_ISSUER" --keychain "$KEYCHAIN"
+      - run: bash scripts/package-macos.sh '${{ matrix.target }}'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.target }}
+          path: artifacts/*
+          if-no-files-found: error
+      - name: Remove credentials
+        if: always()
+        run: |
+          security delete-keychain "$RUNNER_TEMP/destroy-dictation-release.keychain-db" || true
+          rm -f "$RUNNER_TEMP/destroy-signing.p12" "$RUNNER_TEMP/destroy-dictation-notary.p8"
+  draft:
+    needs: package
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          merge-multiple: true
+          path: artifacts
+      - name: Create metadata and draft only
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          RELEASE_COMMIT: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          VERSION="$(python3 -c 'import json;print(json.load(open("apps/desktop/package.json"))["version"])')"
+          python3 scripts/release-metadata.py --repo "$REPOSITORY" --version "$VERSION"
+          gh release create "v$VERSION" artifacts/* --repo "$REPOSITORY" --target "$RELEASE_COMMIT" --draft --title "Destroy Dictation $VERSION" --notes-file docs/RELEASE_NOTES.md
