@@ -1,0 +1,6 @@
+{
+  "identifier": "dictation-hud",
+  "description": "Presentation only; actions are fenced and forwarded to the main owner",
+  "windows": ["dictation-hud"],
+  "permissions": ["core:event:allow-listen", "core:event:allow-unlisten"]
+}

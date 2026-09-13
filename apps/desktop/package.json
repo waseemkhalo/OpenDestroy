@@ -1,0 +1,30 @@
+{
+  "name": "destroy-dictation-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "dev": "node scripts/tauri.mjs dev",
+    "build": "vite build",
+    "check": "svelte-check --tsconfig ./tsconfig.json",
+    "test": "vitest run",
+    "tauri": "node scripts/tauri.mjs",
+    "dev:web": "vite --host 127.0.0.1 --port 1422 --strictPort"
+  },
+  "dependencies": {
+    "@lucide/svelte": "^1.24.0",
+    "@tauri-apps/api": "^2",
+    "@tauri-apps/plugin-updater": "~2.10.0"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^5.0.0",
+    "@tauri-apps/cli": "^2",
+    "@types/node": "^25.9.1",
+    "svelte": "^5.0.0",
+    "svelte-check": "^4.0.0",
+    "typescript": "~5.6.2",
+    "vite": "^6.0.3",
+    "vitest": "^4.1.11"
+  }
+}

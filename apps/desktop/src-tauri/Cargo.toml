@@ -1,0 +1,52 @@
+[package]
+name = "destroy-desktop"
+description = "Destroy Dictation — community dictation app"
+version.workspace = true
+edition.workspace = true
+
+license.workspace = true
+
+
+
+[lib]
+name = "destroy_desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["macos-private-api", "tray-icon"] }
+tauri-plugin-global-shortcut = "2"
+tauri-plugin-updater = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+base64 = "0.22"
+sha2 = "0.10"
+rand = "0.8"
+uuid = { version = "1", features = ["v4"] }
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
+tokio-tungstenite = { version = "0.29.0", features = ["rustls-tls-native-roots"] }
+futures-util = { version = "0.3.32", features = ["sink"] }
+
+dictation-protocol = { path = "../../../crates/dictation-protocol" }
+thiserror = "2"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+security-framework = "3"
+objc2-web-kit = { version = "0.3.2", default-features = false, features = ["std", "WKWebView", "WKSnapshotConfiguration", "block2", "objc2-app-kit"] }
+core-graphics = "0.25"
+core-foundation = "0.10"
+objc2-app-kit = { version = "0.3.2", default-features = false, features = ["NSWindow", "NSScreen", "NSEvent", "NSHapticFeedback", "NSWorkspace", "NSRunningApplication", "NSPasteboard", "NSPasteboardItem", "libc", "NSImage", "NSImageRep", "NSBitmapImageRep"] }
+objc2-core-foundation = "0.3.2"
+objc2-foundation = "0.3.2"
+objc2 = "0.6"
+block2 = "0.6"
