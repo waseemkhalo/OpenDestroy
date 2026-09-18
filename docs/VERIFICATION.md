@@ -1,18 +1,21 @@
-# Verification — September 13, 2026
+# Verification — September 18, 2026
 
 This is an independently extracted source candidate, not a shipped installer.
 
+Automated results below were re-run on September 18 on Linux, except where a row says otherwise. The desktop crate needs a platform GUI toolchain to build, so its native tests remain macOS checks and their September 13 result is carried forward with that date rather than restated as current.
+
 | Check | Result |
 |---|---|
-| Frontend tests | 105 passed in 15 files |
+| Frontend tests | 123 passed in 16 files |
 | Svelte check | 0 errors, 0 warnings |
-| Frontend production build | Passed; approximately 153 KB JavaScript before gzip |
-| npm audit | 0 reported advisories at preparation time |
-| Integrated Rust workspace tests | 58 passed: 43 desktop/native logic, 15 backend |
+| Frontend production build | Passed; approximately 160 KB JavaScript before gzip |
+| npm audit | 0 reported advisories, with and without dev dependencies |
+| Backend crate tests | 16 passed |
+| Desktop/native Rust logic tests | Not re-run for this update; macOS only. 43 passed on September 13, 2026 |
 | Rust formatting | Passed |
 | Python setup/publication/release tests | 13 passed |
 | Local backend HTTP smoke | Passed using disposable credentials and local SQLite |
-| Missing-provider behavior | Speech/media operations fail visibly when not configured |
+| Missing-provider behavior | Speech/media operations fail visibly when not configured, naming the missing settings |
 | Export/deletion/isolation | Passed, including authenticated deletion of corrupt records |
 | Source boundary/history | Checked by scripts/audit-public.py against explicit reviewed paths |
 | Live speech provider calls | Not verified |
