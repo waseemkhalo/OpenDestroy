@@ -70,15 +70,40 @@ fn language(raw: &str) -> Option<&'static str> {
         _ => None,
     }
 }
-fn media_enabled() -> bool {
-    [
-        "GIPHY_PROXY_APPROVED",
-        "GIPHY_MEDIA_URL_STORAGE_APPROVED",
-        "GIPHY_FAVORITES_ORDER_APPROVED",
-    ]
-    .iter()
-    .all(|k| std::env::var(k).as_deref() == Ok("true"))
-        && std::env::var("GIPHY_API_KEY").is_ok_and(|v| !v.trim().is_empty())
+const MEDIA_APPROVALS: [&str; 3] = [
+    "GIPHY_PROXY_APPROVED",
+    "GIPHY_MEDIA_URL_STORAGE_APPROVED",
+    "GIPHY_FAVORITES_ORDER_APPROVED",
+];
+
+/// Names the media configuration this deployment is still missing.
+///
+/// An absent key and an unset approval flag fail identically at the request
+/// boundary, so an operator who set one of the four sees the same "unavailable"
+/// as one who set none, with nothing to act on. These are variable names the
+/// operator already has in `.env.example`; no value is ever read back out.
+fn media_blockers_from(read: impl Fn(&str) -> Option<String>) -> Vec<&'static str> {
+    let mut missing: Vec<&'static str> = MEDIA_APPROVALS
+        .into_iter()
+        .filter(|key| read(key).as_deref() != Some("true"))
+        .collect();
+    if !read("GIPHY_API_KEY").is_some_and(|v| !v.trim().is_empty()) {
+        missing.push("GIPHY_API_KEY");
+    }
+    missing
+}
+
+fn media_blockers() -> Vec<&'static str> {
+    media_blockers_from(|key| std::env::var(key).ok())
+}
+
+/// Operator-facing explanation for a blocked media request. The reader is
+/// whoever runs this backend, so it names the fix rather than the symptom.
+fn media_unavailable(blockers: &[&'static str]) -> String {
+    format!(
+        "Media is disabled on this backend. Set {} in .env, then restart the service.",
+        blockers.join(", ")
+    )
 }
 async fn bounded(response: reqwest::Response, max: usize) -> Result<Value, String> {
     if !response.status().is_success() {
@@ -256,8 +281,9 @@ fn validate_https(raw: &str) -> bool {
     })
 }
 async fn media_search(state: &AppState, body: &Value) -> Result<Value, String> {
-    if !media_enabled() {
-        return Err("GIPHY provider approval is missing for this deployment".into());
+    let blockers = media_blockers();
+    if !blockers.is_empty() {
+        return Err(media_unavailable(&blockers));
     }
     let query = body["query"]
         .as_str()
@@ -405,7 +431,10 @@ async fn api(
                 json!({"terms":data["terms"].as_array().cloned().unwrap_or_default(),"max_terms":100})
             }
             "/v1/dictation/usage" => usage(&data),
-            "/v1/dictation/media/status" => json!({"enabled":media_enabled()}),
+            "/v1/dictation/media/status" => {
+                let blockers = media_blockers();
+                json!({"enabled":blockers.is_empty(),"missing":blockers})
+            }
             "/v1/dictation/media/favorites" => {
                 json!({"favorites":data["favorites"].as_array().cloned().unwrap_or_default()})
             }
@@ -432,7 +461,7 @@ async fn api(
  "/v1/variables"=>{let vars=body.as_object().ok_or("Variables must be an object")?;if vars.len()>50||vars.iter().any(|(k,v)|k.is_empty()||k.len()>40||!k.chars().all(|c|c.is_ascii_alphanumeric()||c=='_')||v.as_str().is_none_or(|v|v.len()>4000)){return Err("Invalid snippet variables".into())}data["variables"]=body.clone();return Ok(body.clone())},
  "/v1/links"=>{let rows=body.as_array().filter(|v|v.len()<=100).ok_or("Maximum 100 links")?;if rows.iter().any(|v|v["name"].as_str().is_none_or(|v|v.is_empty()||v.len()>200)||!validate_https(v["url"].as_str().unwrap_or(""))||v["keywords"].as_str().is_some_and(|v|v.len()>1000)){return Err("Every link needs a name and HTTPS URL".into())}data["links"]=body.clone();return Ok(body.clone())},
  "/v1/dictation/snippets"=>{let input:SaveDictationSnippetRequest=serde_json::from_value(body.clone()).map_err(|_|"Invalid snippet")?;if input.trigger.trim().is_empty()||input.trigger.len()>160||input.title.len()>120||input.body.is_empty()||input.body.chars().count()>4000{return Err("Invalid snippet size".into())}let id=input.id.unwrap_or_else(uuid::Uuid::new_v4);let snippet=json!(DictationSnippet{id,title:input.title,trigger:input.trigger,body:input.body});let mut rows=data["snippets"].as_array().cloned().unwrap_or_default();rows.retain(|v|v["id"]!=id.to_string());if rows.len()>=50{return Err("Maximum 50 snippets".into())}rows.push(snippet.clone());data["snippets"]=json!(rows);return Ok(snippet)},
- "/v1/dictation/media/favorites"=>{if !media_enabled(){return Err("GIPHY provider approval missing".into())}let mut favorite=body.clone();for key in ["preview_url","content_url","source_url"]{let raw=favorite[key].as_str().unwrap_or("");if !reqwest::Url::parse(raw).is_ok_and(|u|u.scheme()=="https"&&u.host_str().is_some_and(|h|h=="giphy.com"||h.ends_with(".giphy.com"))){return Err("Invalid GIPHY URL".into())}}favorite["id"]=json!(uuid::Uuid::new_v4());let mut rows=data["favorites"].as_array().cloned().unwrap_or_default();rows.retain(|v|v["provider_id"]!=favorite["provider_id"]);if rows.len()>=30{return Err("Maximum 30 favorites".into())}rows.push(favorite.clone());data["favorites"]=json!(rows);return Ok(favorite)},_=>{}}}
+ "/v1/dictation/media/favorites"=>{let blockers=media_blockers();if !blockers.is_empty(){return Err(media_unavailable(&blockers))}let mut favorite=body.clone();for key in ["preview_url","content_url","source_url"]{let raw=favorite[key].as_str().unwrap_or("");if !reqwest::Url::parse(raw).is_ok_and(|u|u.scheme()=="https"&&u.host_str().is_some_and(|h|h=="giphy.com"||h.ends_with(".giphy.com"))){return Err("Invalid GIPHY URL".into())}}favorite["id"]=json!(uuid::Uuid::new_v4());let mut rows=data["favorites"].as_array().cloned().unwrap_or_default();rows.retain(|v|v["provider_id"]!=favorite["provider_id"]);if rows.len()>=30{return Err("Maximum 30 favorites".into())}rows.push(favorite.clone());data["favorites"]=json!(rows);return Ok(favorite)},_=>{}}}
  if path=="/v1/dictation/usage"&&method==Method::POST{
  let day=body["day"].as_str().ok_or("Local day is required")?;let date=chrono::NaiveDate::parse_from_str(day,"%Y-%m-%d").map_err(|_|"Invalid date")?;let age=chrono::Utc::now().date_naive().signed_duration_since(date).num_days();if !(-1..=366).contains(&age){return Err("Date out of range".into())}let words=body["words"].as_u64().filter(|v|*v<=200000).ok_or("Invalid word count")?;let ms=body["speaking_ms"].as_u64().filter(|v|*v<=86400000).ok_or("Invalid speaking time")?;if !data["days"].is_object(){data["days"]=json!({})}data["days"][day]=json!({"words":words.max(data["days"][day]["words"].as_u64().unwrap_or(0)),"speaking_ms":ms.max(data["days"][day]["speaking_ms"].as_u64().unwrap_or(0))});return Ok(usage(data))}
  if method==Method::DELETE{for (prefix,key)in [("/v1/dictation/snippets/","snippets"),("/v1/dictation/media/favorites/","favorites")]{if let Some(id)=path.strip_prefix(prefix){let mut rows=data[key].as_array().cloned().unwrap_or_default();rows.retain(|v|v["id"]!=id);data[key]=json!(rows);return Ok(json!({"deleted":true}))}}}
@@ -614,6 +643,62 @@ mod tests {
             serde_json::from_slice(&bytes).unwrap_or(Value::Null),
         )
     }
+    #[test]
+    fn media_blockers_name_each_missing_setting() {
+        let configured = |key: &str| {
+            Some(
+                match key {
+                    "GIPHY_API_KEY" => "key",
+                    _ => "true",
+                }
+                .to_string(),
+            )
+        };
+        assert!(media_blockers_from(configured).is_empty());
+
+        // The reported case: a key was set, the generated flags were left alone.
+        assert_eq!(
+            media_blockers_from(|key| Some(
+                if key == "GIPHY_API_KEY" {
+                    "key"
+                } else {
+                    "false"
+                }
+                .to_string()
+            )),
+            MEDIA_APPROVALS.to_vec()
+        );
+
+        // A whitespace-only key is not a key, and an absent flag is not "true".
+        assert_eq!(
+            media_blockers_from(|key| (key != "GIPHY_API_KEY").then(|| "true".to_string())),
+            vec!["GIPHY_API_KEY"]
+        );
+        assert_eq!(
+            media_blockers_from(|key| (key == "GIPHY_API_KEY").then(|| "   ".to_string())),
+            [MEDIA_APPROVALS.as_slice(), &["GIPHY_API_KEY"]].concat()
+        );
+
+        // One unset flag is still reported on its own rather than as a bare failure.
+        let one_flag_missing = |key: &str| {
+            Some(
+                match key {
+                    "GIPHY_API_KEY" => "key",
+                    "GIPHY_FAVORITES_ORDER_APPROVED" => "false",
+                    _ => "true",
+                }
+                .to_string(),
+            )
+        };
+        assert_eq!(
+            media_blockers_from(one_flag_missing),
+            vec!["GIPHY_FAVORITES_ORDER_APPROVED"]
+        );
+
+        assert!(media_unavailable(&["GIPHY_API_KEY"]).contains("GIPHY_API_KEY"));
+        assert!(media_unavailable(&["GIPHY_API_KEY"]).contains("restart"));
+    }
+
     #[tokio::test]
     async fn authentication_and_isolation() {
         let a = app();

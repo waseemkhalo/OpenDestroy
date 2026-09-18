@@ -44,25 +44,65 @@ export type DictationMediaVoiceChoice =
   | { type: "rotate" }
   | { type: "cancel" };
 
-let mediaAvailable = false;
+/**
+ * Why media commands are or are not usable.
+ *
+ * `disabled` and `unreachable` both fail closed, but they are different jobs for
+ * whoever is looking: one is a `.env` edit on the backend, the other is a
+ * connection problem in this app. Collapsing them into one boolean sends an
+ * operator to the wrong file.
+ */
+export type DictationMediaAvailability =
+  | { state: "enabled" }
+  | { state: "disabled"; missing: string[] }
+  | { state: "unreachable" };
+
+let availability: DictationMediaAvailability = { state: "unreachable" };
 
 /** Refreshes the server-owned provider capability without exposing its key. */
 export async function refreshDictationMediaAvailability(): Promise<boolean> {
   try {
-    const response = await invoke<{ enabled?: boolean }>("backend_api", {
+    const response = await invoke<{ enabled?: boolean; missing?: unknown }>("backend_api", {
       method: "GET",
       path: "/v1/dictation/media/status",
       body: null,
     });
-    mediaAvailable = response?.enabled === true;
+    availability =
+      response?.enabled === true
+        ? { state: "enabled" }
+        : {
+            state: "disabled",
+            // A backend older than this route reports no list; an empty one
+            // degrades to the generic message rather than naming nothing.
+            missing: Array.isArray(response?.missing)
+              ? response.missing.filter((v): v is string => typeof v === "string")
+              : [],
+          };
   } catch {
-    mediaAvailable = false;
+    availability = { state: "unreachable" };
   }
-  return mediaAvailable;
+  return availability.state === "enabled";
 }
 
 export function dictationMediaAvailable(): boolean {
-  return mediaAvailable;
+  return availability.state === "enabled";
+}
+
+export function dictationMediaAvailability(): DictationMediaAvailability {
+  return availability;
+}
+
+/** Operator-facing sentence for a blocked media command. */
+export function dictationMediaUnavailableMessage(
+  current: DictationMediaAvailability = availability,
+): string {
+  if (current.state === "enabled") return "";
+  if (current.state === "unreachable") {
+    return "Could not reach the backend to check media. Check Connection & device.";
+  }
+  return current.missing.length
+    ? `Media is disabled on the backend. Set ${current.missing.join(", ")} in .env, then restart the service.`
+    : "Media is disabled on the backend. See docs/SELF_HOSTING.md for the GIPHY settings.";
 }
 
 const KIND = "(?<kind>gif|jif|giphy|sticker)s?";

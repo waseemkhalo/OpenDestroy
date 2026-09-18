@@ -1,7 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  dictationMediaAvailability,
   dictationMediaAvailable,
+  dictationMediaUnavailableMessage,
   extractDictationMediaIntent,
   parseDictationMediaVoiceChoice,
   refreshDictationMediaAvailability,
@@ -33,6 +35,48 @@ describe("dictation media availability", () => {
     invoke.mockRejectedValueOnce(new Error("signed out"));
     await expect(refreshDictationMediaAvailability()).resolves.toBe(false);
     expect(dictationMediaAvailable()).toBe(false);
+  });
+
+  it("names the settings an operator still has to set", async () => {
+    invoke.mockResolvedValueOnce({
+      enabled: false,
+      missing: ["GIPHY_PROXY_APPROVED", "GIPHY_API_KEY"],
+    });
+    await expect(refreshDictationMediaAvailability()).resolves.toBe(false);
+    expect(dictationMediaAvailability()).toEqual({
+      state: "disabled",
+      missing: ["GIPHY_PROXY_APPROVED", "GIPHY_API_KEY"],
+    });
+    const message = dictationMediaUnavailableMessage();
+    expect(message).toContain("GIPHY_PROXY_APPROVED");
+    expect(message).toContain("GIPHY_API_KEY");
+    expect(message).toContain("restart");
+  });
+
+  it("separates an unreachable backend from a disabled integration", async () => {
+    invoke.mockRejectedValueOnce(new Error("signed out"));
+    await refreshDictationMediaAvailability();
+    expect(dictationMediaAvailability()).toEqual({ state: "unreachable" });
+    // Sending an operator to .env for what is a connection problem is the
+    // failure this whole distinction exists to prevent.
+    expect(dictationMediaUnavailableMessage()).not.toContain(".env");
+    expect(dictationMediaUnavailableMessage()).toContain("Connection");
+  });
+
+  it("degrades to a generic message for a backend that reports no list", async () => {
+    invoke.mockResolvedValueOnce({ enabled: false });
+    await refreshDictationMediaAvailability();
+    expect(dictationMediaAvailability()).toEqual({ state: "disabled", missing: [] });
+    expect(dictationMediaUnavailableMessage()).toContain("SELF_HOSTING");
+  });
+
+  it("ignores a malformed missing list rather than rendering it", async () => {
+    invoke.mockResolvedValueOnce({ enabled: false, missing: [42, "GIPHY_API_KEY", null] });
+    await refreshDictationMediaAvailability();
+    expect(dictationMediaAvailability()).toEqual({
+      state: "disabled",
+      missing: ["GIPHY_API_KEY"],
+    });
   });
 });
 

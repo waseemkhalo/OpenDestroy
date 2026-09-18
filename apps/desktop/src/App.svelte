@@ -12,7 +12,7 @@
  import {loadDictationPreferences,transformDictation,isUndoDictationCommand,isPreviousDictationCorrection,extractTerminalRewriteCommand,resetDictationComposerCache} from './lib/dictation/dictationComposer';
  import {recordDictation,clearDictationMemory} from './lib/dictation/dictationState';
  import {extractDictationEmojiIntent,emojiChoices,type DictationEmojiChoice} from './lib/dictation/emoji';
- import {extractDictationMediaIntent,parseDictationMediaVoiceChoice,searchDictationMedia,saveDictationMediaFavorite,loadDictationMediaFavorites,favoriteAsMediaResult,refreshDictationMediaAvailability,type DictationMediaResult,type DictationMediaKind} from './lib/dictation/giphy';
+ import {extractDictationMediaIntent,parseDictationMediaVoiceChoice,searchDictationMedia,saveDictationMediaFavorite,loadDictationMediaFavorites,favoriteAsMediaResult,refreshDictationMediaAvailability,dictationMediaAvailability,dictationMediaUnavailableMessage,type DictationMediaResult,type DictationMediaKind,type DictationMediaAvailability} from './lib/dictation/giphy';
  import {extractDictationAttachmentIntent} from './lib/dictation/attachment';
  import {isVoiceNoteCommand} from './lib/dictation/voiceNote';
  import MediaPicker from './lib/dictation/DictationMediaPicker.svelte';
@@ -38,6 +38,7 @@
  let vars=$state('{}'),linksJson=$state('[]'),deleteConfirm=$state(false),connecting=$state(false);
  const api=<T,>(method:string,path:string,body:unknown=null,owner=account())=>{if(!owner.expectedUserId||!owns(owner))return Promise.reject(new Error('Connection changed. Try again.'));return invoke<T>('backend_api',{method,path,body,expectedUserId:owner.expectedUserId,expectedBackendUrl:owner.expectedBackendUrl});};
  function fail(e:unknown){error=e instanceof Error?e.message:String(e);}
+ let mediaStatus=$state<DictationMediaAvailability|null>(null);
  let mediaPool:DictationMediaResult[]=[],mediaOffset=0,mediaEnded=false,mediaRequest=0,mediaInitialized=false;
  function resetMedia(){mediaRequest++;mediaPool=[];mediaOffset=0;mediaEnded=false;mediaInitialized=false;page=0;media=[];}
  function clearPicker(){resetMedia();emoji=[];media=[];links=[];leading='';query='';page=0;mediaOpen=false;}
@@ -68,7 +69,7 @@
    else if(action.action==='kind'&&action.kind)await changeKind(action.kind);
   }catch(e){if(current())fail(e);}
  }
- async function boundary(){connectionRevision++;setAccount(null);connectedServer='';user=null;target=null;needsAccessibility=false;error='';vars='{}';linksJson='[]';favorites=[];token='';deleteConfirm=false;clearDictationMemory();resetDictationComposerCache();await cancel();}
+ async function boundary(){connectionRevision++;setAccount(null);connectedServer='';user=null;target=null;needsAccessibility=false;error='';vars='{}';linksJson='[]';favorites=[];mediaStatus=null;token='';deleteConfirm=false;clearDictationMemory();resetDictationComposerCache();await cancel();}
  async function connect(){
   if(connecting||!native)return;
   connecting=true;error='';const submittedUrl=url,submittedToken=token,attempt=++connectionAction;
@@ -85,7 +86,11 @@
   const [v,l,f]=await Promise.all([api('GET','/v1/variables',null,owner),api('GET','/v1/links',null,owner),api<{favorites:{id:string;title:string}[]}>('GET','/v1/dictation/media/favorites',null,owner)]);
   if(!owns(owner))return;
   vars=JSON.stringify(v,null,2);linksJson=JSON.stringify(l,null,2);favorites=f.favorites;
+  // Checked at connection, not at the picker: an operator should find out
+  // media is off while looking at settings, not mid-sentence into a customer's field.
+  await refreshDictationMediaAvailability();if(owns(owner))mediaStatus=dictationMediaAvailability();
  }
+ async function checkMedia(){const owner=account();await refreshDictationMediaAvailability();if(owns(owner))mediaStatus=dictationMediaAvailability();}
  async function refreshDevices(){devices=(await navigator.mediaDevices.enumerateDevices()).filter(d=>d.kind==='audioinput');}
  async function allowMic(){try{await invoke('request_microphone_access');permissions=await invoke('get_permission_status');if(permissions.microphone){const stream=await navigator.mediaDevices.getUserMedia({audio:true});stream.getTracks().forEach(t=>t.stop());await refreshDevices();}}catch(e){fail(e)}}
  async function start(value:Start){
@@ -119,7 +124,7 @@
  const current=()=>gen===generation&&request===mediaRequest;
  try{
   if(!mediaInitialized){
-   if(!await refreshDictationMediaAvailability())throw new Error('Media is unavailable. The backend operator must configure an approved GIPHY integration.');
+   if(!await refreshDictationMediaAvailability()){mediaStatus=dictationMediaAvailability();throw new Error(dictationMediaUnavailableMessage());}
    if(!current())return;
    const saved=await loadDictationMediaFavorites();if(!current())return;
    mediaPool=saved.filter(f=>f.kind===kind&&f.query.toLowerCase()===query.toLowerCase()).map(favoriteAsMediaResult);mediaInitialized=true;
@@ -184,7 +189,7 @@
  <form onsubmit={e=>{e.preventDefault();void connect()}}><label>Backend URL<input bind:value={url} type="url" required/></label><label>Backend access token<input bind:value={token} type="password" autocomplete="off" placeholder={user?'Enter a token to change connection':'From your backend operator'} required/></label><button class="primary" disabled={connecting||!native}>{connecting?'Connecting…':'Connect backend'}</button></form>
  {#if user}<p>Connected as {user}</p><button onclick={()=>void disconnect()}>Disconnect</button>{/if}
  <div class="settings-group"><h2>Microphone & shortcut</h2><div class="row"><span>Microphone {permissions.microphone?'allowed':'required'}</span><button onclick={()=>void allowMic()}>Allow / refresh</button></div><label>Input device<select bind:value={mic} onchange={()=>localStorage.setItem('destroy.microphone',mic)}><option value="">System default</option>{#each devices as device}<option value={device.deviceId}>{device.label||'Microphone'}</option>{/each}</select></label><p class="hint">A pinned microphone must be available. System default follows macOS at the next hold.</p><label>Hold-to-dictate shortcut<input bind:value={shortcut}/></label><button onclick={async()=>{try{await invoke('set_shortcut',{value:shortcut});message='Shortcut saved.';}catch(e){fail(e)}}}>Save shortcut</button><button onclick={async()=>{permissions.accessibility=await invoke('request_accessibility_access');}}>Allow Accessibility</button><p class="hint">Microphone captures your voice. Accessibility enables insertion into the original field. Screen Recording is not required.</p></div>
- {#if user}<div class="settings-group"><h2>Snippet variables & saved links</h2><label>Variables (JSON)<textarea bind:value={vars} spellcheck="false" rows="4"></textarea></label><p class="hint">For example, {`{"my_company":"Your company"}`}. Only variables you define are used.</p><label>Named links (JSON)<textarea bind:value={linksJson} spellcheck="false" rows="5"></textarea></label><p class="hint">{`[{"name":"demo video","url":"https://example.com/demo","keywords":"product walkthrough"}]`}. These are links, not uploaded attachments.</p><button onclick={()=>void saveExtras()}>Save variables and links</button></div><div class="settings-group"><h2>Saved media favorites</h2>{#each favorites as favorite}<div class="row"><span>{favorite.title||'Saved media'}</span><button onclick={()=>void removeFavorite(favorite.id)}>Remove</button></div>{/each}<h2>Your data</h2><button onclick={()=>void exportData()}>Export personal data</button><button onclick={()=>deleteConfirm=true}>Delete personal data…</button>{#if deleteConfirm}<p>Deletes your saved preferences, snippets, favorites, links, vocabulary and usage from this backend and clears this app’s cache.</p><button class="danger" onclick={()=>void deleteData()}>Confirm deletion</button><button onclick={()=>deleteConfirm=false}>Keep data</button>{/if}</div>{/if}
+ {#if user}<div class="settings-group"><h2>Snippet variables & saved links</h2><label>Variables (JSON)<textarea bind:value={vars} spellcheck="false" rows="4"></textarea></label><p class="hint">For example, {`{"my_company":"Your company"}`}. Only variables you define are used.</p><label>Named links (JSON)<textarea bind:value={linksJson} spellcheck="false" rows="5"></textarea></label><p class="hint">{`[{"name":"demo video","url":"https://example.com/demo","keywords":"product walkthrough"}]`}. These are links, not uploaded attachments.</p><button onclick={()=>void saveExtras()}>Save variables and links</button></div><div class="settings-group"><h2>GIFs & stickers</h2><div class="row"><span>{mediaStatus?mediaStatus.state==='enabled'?'Available':mediaStatus.state==='unreachable'?'Backend unreachable':'Disabled on the backend':'Not checked yet'}</span><button onclick={()=>void checkMedia()}>Re-check</button></div>{#if mediaStatus&&mediaStatus.state!=='enabled'}<p class="hint">{dictationMediaUnavailableMessage(mediaStatus)}</p>{/if}<h2>Saved media favorites</h2>{#each favorites as favorite}<div class="row"><span>{favorite.title||'Saved media'}</span><button onclick={()=>void removeFavorite(favorite.id)}>Remove</button></div>{/each}<h2>Your data</h2><button onclick={()=>void exportData()}>Export personal data</button><button onclick={()=>deleteConfirm=true}>Delete personal data…</button>{#if deleteConfirm}<p>Deletes your saved preferences, snippets, favorites, links, vocabulary and usage from this backend and clears this app’s cache.</p><button class="danger" onclick={()=>void deleteData()}>Confirm deletion</button><button onclick={()=>deleteConfirm=false}>Keep data</button>{/if}</div>{/if}
  {/if}</section><div class="updates"><button disabled={!updatesEnabled} onclick={async()=>{try{update=await check();updateMessage=update?'Version '+update.version+' is available.':'No newer version is available.';}catch{updateMessage='Update feed is not configured or could not be reached.';}}}>Check for updates</button>{#if update}<button onclick={async()=>{try{await cancel();await update?.downloadAndInstall();updateMessage='Update installed. Quit and reopen Destroy Dictation.';}catch(e){fail(e)}}}>Install {update.version}</button>{/if}<span>{updateMessage}</span></div><footer><span>0.1.0 · Development build</span><button onclick={()=>void invoke('quit_app')}>Quit Destroy Dictation</button></footer>
  {/if}
 </main>

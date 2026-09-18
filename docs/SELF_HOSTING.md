@@ -13,6 +13,8 @@ Edit `.env` using the existing JSON-quoted value format:
 - `GEMINI_API_KEY` with `GEMINI_PAID_PROJECT="true"` enables the optional live adapter; the operator must verify its project eligibility and configured model.
 - `GIPHY_API_KEY` and the three `GIPHY_*_APPROVED` flags gate search/favorites. Those flags describe the operator's reviewed integration permissions; setting them is not evidence of provider approval. Leave them false until that review is complete.
 
+All four of those settings are required together, and the service reads them at startup: restart it after editing. The app's GIFs & stickers row in settings names whichever ones are still missing, and `GET /v1/dictation/media/status` returns the same list.
+
 Provider models and terms can change. Verify the configured endpoints and current provider requirements before enabling them. No live provider request has been validated as part of preparing this repository.
 
 Run `python3 scripts/run-backend.py`. The desktop connects to its origin using the generated access token, not a provider API key. Without a speech provider, setup and settings work but transcription is unavailable.
