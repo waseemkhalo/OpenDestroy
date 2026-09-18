@@ -11,7 +11,7 @@
  * `/document/d/1AbC.../edit`, and guessing one would put a wrong name in front of
  * a customer. So the rule is: derive what the URL actually contains — the kind of
  * file and, where the provider puts it in the path, the title — and leave the rest
- * to the person, with the recognised source shown so they know what they pasted.
+ * to the person, with the recognized source shown so they know what they pasted.
  */
 
 import type { DictationAttachmentKind } from "./attachment";
@@ -19,14 +19,14 @@ import type { DictationAttachmentKind } from "./attachment";
 export type SavedLink = { name: string; url: string; keywords?: string };
 
 export type SavedLinkDraft = {
-  /** Normalised absolute HTTPS URL, safe to send to `/v1/links`. */
+  /** Normalized absolute HTTPS URL, safe to send to `/v1/links`. */
   url: string;
   /** Title read out of the URL, or `""` when it carries none. Never invented. */
   name: string;
   kind: DictationAttachmentKind;
   /** Suggested spoken-search terms. Editable before saving. */
   keywords: string;
-  /** What the URL was recognised as, shown so the user can confirm the paste. */
+  /** What the URL was recognized as, shown so the user can confirm the paste. */
   source: string;
 };
 
@@ -162,7 +162,7 @@ function notionName(segments: string[]): string {
   return tidy(safeDecode(slug).replace(/-?[0-9a-f]{32}$/iu, ""));
 }
 
-function recognise(url: URL): Recognition {
+function recognize(url: URL): Recognition {
   const host = url.hostname.toLowerCase().replace(/^www\./u, "");
   const segments = segmentsOf(url);
 
@@ -207,7 +207,7 @@ function recognise(url: URL): Recognition {
   return {
     source: kind === "any" ? "Link" : extension.toUpperCase(),
     kind,
-    // Only a recognised file extension proves the segment is a filename rather
+    // Only a recognized file extension proves the segment is a filename rather
     // than a routing path, so "/pricing/enterprise" does not become a title.
     name: kind === "any" ? "" : nameFromSegment(last),
   };
@@ -253,7 +253,7 @@ export function parseSavedLink(input: string): SavedLinkParse {
   // saved catalog and out of whatever field the link is later pasted into.
   if (url.username || url.password) return { ok: false, reason: "credentials" };
 
-  const recognition = recognise(url);
+  const recognition = recognize(url);
   return {
     ok: true,
     draft: {

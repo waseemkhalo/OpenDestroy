@@ -18,6 +18,6 @@ The desktop is a Tauri application. Its web renderer supplies settings and captu
 
 The local service accepts a bearer access token whose SHA-256 hash maps to a stable user ID. The authenticated identity determines the data scope. The frontend never chooses another account by supplying its ID. Provider keys stay in the service environment.
 
-Recorded audio and selections are transient. A voice note is an explicit file handoff with timed cleanup. Saved preferences, vocabulary, snippets, links, media favorites and usage aggregates are persistent personal data. See PRIVACY.md for exceptions and external copies.
+Recorded audio and selections are transient. A voice note is an explicit file handoff with timed cleanup. Saved preferences, vocabulary, snippets, links, media favorites and usage aggregates are persistent personal data. See PRIVACY.md for exceptions and external copies. Saved links are built in the renderer: a pasted share URL is parsed for its file kind, and for a title when its path carries one. That parsing makes no network request and authenticates to no provider, so a recognized Google or Dropbox URL is a string result, not a connected account.
 
 The recording HUD is separate from the settings window. Starting or finishing speech must not resize or reposition the user's settings window. Its destination display uses the app icon. This community app has separate production/development bundle and credential namespaces.

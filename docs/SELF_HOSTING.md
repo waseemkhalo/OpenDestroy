@@ -15,6 +15,8 @@ Edit `.env` using the existing JSON-quoted value format:
 
 All four of those settings are required together, and the service reads them at startup: restart it after editing. The app's GIFs & stickers row in settings names whichever ones are still missing, and `GET /v1/dictation/media/status` returns the same list.
 
+Saved links need no service configuration. They are per-user application data: the desktop parses a pasted share URL locally and stores the resulting name, URL and keywords in that user's encrypted record. The service never fetches a saved link.
+
 Provider models and terms can change. Verify the configured endpoints and current provider requirements before enabling them. No live provider request has been validated as part of preparing this repository.
 
 Run `python3 scripts/run-backend.py`. The desktop connects to its origin using the generated access token, not a provider API key. Without a speech provider, setup and settings work but transcription is unavailable.

@@ -11,10 +11,10 @@ Speak into the Mac app you are already using. Hold a shortcut, speak, and releas
 - Microphone selection, language, vocabulary, writing preferences and voice snippets.
 - Emoji choices and spoken selection; configurable GIF/sticker integration and favorites.
 - Two-stage voice-note recording and handoff to the current app.
-- Spoken lookup of saved file links, with a three-choice picker.
+- Saved file links added by pasting a share URL, then found by voice through a three-choice picker.
 - Personal settings export/deletion and a local encrypted SQLite service.
 
-“File dictation” here inserts a saved HTTPS link. It does not upload file bytes, search a cloud drive, change sharing, or transcribe imported audio/video files. Media availability depends on configured providers and the receiving app. See [capabilities and limitations](docs/PARITY.md).
+“File dictation” here inserts a saved HTTPS link. You build that catalog yourself by pasting share URLs into settings, and the app reads the file kind — and a title when the URL contains one — from the pasted text alone. Recognizing a Google or Dropbox URL is string parsing, not a connector: nothing signs in and no file is read. It does not upload file bytes, search a cloud drive, change sharing, or transcribe imported audio/video files. Media availability depends on configured providers and the receiving app. See [capabilities and limitations](docs/PARITY.md).
 
 This repository provides dictation software, not trained model weights. Speech and optional writing transformations use your configured providers. It is not an offline speech engine. Provider charges may apply.
 
@@ -49,6 +49,12 @@ npm run dev
 In Connection & device, use `http://127.0.0.1:8787` and the token from `data/desktop-access-token.txt`. Allow Microphone and, for direct insertion, Accessibility. Choose a free shortcut if another app already uses the default. Focus a disposable editable document, hold the shortcut, speak and release. Never disable Gatekeeper as an installation workaround.
 
 The community app uses its own bundle identity, Keychain namespace and preferences. It can be installed alongside another app without sharing its credentials.
+
+### Saved links
+
+Open **Saved links** in settings, paste a share URL and press **Add link**. Dropbox, Notion, Figma and plain file URLs carry a title in their path, so the name is filled in for you. A Google Docs, Sheets or Slides URL carries only a file id, so name that one yourself: the name is what you will say out loud, and an unnamed link cannot be found.
+
+Keywords are seeded with the words people use for that kind of file, so “attach my presentation” reaches a Slides link whose name never says the word. Edit them to match how you actually speak. Saying a saved name offers up to three matches and inserts the chosen link as text. The file itself is never uploaded and its sharing is never changed, so confirm in the provider that your recipient can open the link.
 
 ## Develop and contribute
 

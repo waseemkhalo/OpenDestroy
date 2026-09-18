@@ -43,6 +43,6 @@ Both architecture artifacts must exist before metadata is generated. Metadata ge
 
 Use disposable text and record OS/app/CPU versions. Verify permission denial, repeated fast holds, quiet speech, cancellation, a missing or changed microphone, the two-minute cap, lost network, live-to-batch fallback, account changes during work and clipboard changes during handoff.
 
-Check direct insertion/selection/correction/undo in Notes, TextEdit, Mail, browser editors and other supported apps. Verify secure fields and self-targets are rejected. Check emoji/media/link delivery and the two-step voice note in actual receiving apps. Confirm the HUD does not steal focus or move the user's settings window.
+Check direct insertion/selection/correction/undo in Notes, TextEdit, Mail, browser editors and other supported apps. Verify secure fields and self-targets are rejected. Check emoji/media/link delivery and the two-step voice note in actual receiving apps. Add saved links by pasting real Google, Dropbox and plain-file share URLs, confirm each recognized kind and name, resolve them by voice, and open every inserted link as its intended recipient. Confirm the HUD does not steal focus or move the user's settings window.
 
 Verify a clean install from a quarantined signed DMG and an update from a previous signed build. Reject tampered updater signatures and preserve settings. A compile or ad-hoc launch does not satisfy these gates.

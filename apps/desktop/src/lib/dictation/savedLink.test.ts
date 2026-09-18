@@ -54,7 +54,7 @@ describe("parseSavedLink recognition", () => {
     expect(page.source).toBe("Link");
   });
 
-  it("recognises video hosts that carry no title", () => {
+  it("recognizes video hosts that carry no title", () => {
     expect(draft("https://www.loom.com/share/abc123")).toMatchObject({ kind: "video", name: "" });
     expect(draft("https://youtu.be/abc123").kind).toBe("video");
   });
