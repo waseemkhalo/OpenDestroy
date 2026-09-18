@@ -68,6 +68,8 @@
     "apps/desktop/src/lib/dictation/emoji.ts",
     "apps/desktop/src/lib/dictation/giphy.test.ts",
     "apps/desktop/src/lib/dictation/giphy.ts",
+    "apps/desktop/src/lib/dictation/savedLink.test.ts",
+    "apps/desktop/src/lib/dictation/savedLink.ts",
     "apps/desktop/src/lib/dictation/voiceNote.test.ts",
     "apps/desktop/src/lib/dictation/voiceNote.ts",
     "apps/desktop/src/lib/mediaPages.test.ts",

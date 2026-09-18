@@ -20,11 +20,13 @@ These statuses describe source implementation, not a shipped product. Automated 
 | Emoji | Three choices, spoken/keyboard choice and cancel | Destination must accept text |
 | GIF/sticker selection | Search, favorites and bounded rotation | Provider integration approvals/configuration required |
 | Voice note | Explicit ready step, then next hold creates a handoff file | Receiver may reject a file paste |
-| Saved file links | Name/keyword lookup, up to three HTTPS links | No cloud-drive connector or file-byte attachment |
+| Saved file links | Name/keyword lookup, up to three HTTPS links; a pasted share URL supplies the file kind, and a title when the URL contains one | No cloud-drive connector or file-byte attachment |
 | Sharing | Existing link access remains unchanged | Manage access in the file provider |
 | Imported media transcription | Not implemented | Do not advertise audio/video-file transcription |
 | Usage | Daily word/speaking-time aggregates | No durable transcript archive |
 | Personal data | Export, deletion and connection/session fencing | Backups/external copies require separate deletion |
 | Signed installer/update | Packaging and draft preparation | Signing, notarization and install/update verification pending |
+
+Recognizing a Google, Dropbox, Notion or Figma share URL is text parsing in the app. It signs in to nothing, reads no file, and confirms neither that a link resolves nor that a recipient can open it. A Google share URL carries no title, so the app asks for a name rather than inventing one.
 
 Do not substitute successful unit tests for real microphone, exact-field, receiving-app, provider or signed-installer evidence. Do not silently enable unavailable media providers or manufacture example provider responses in the running app.
