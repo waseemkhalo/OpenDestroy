@@ -2,6 +2,8 @@
 
 The default community setup runs a service on your own Mac at `127.0.0.1:8787`. The provider you configure performs speech recognition. Self-hosting the relay does not make provider processing offline or free.
 
+The desktop source also offers native local speech and native bring-your-own-key OpenAI/Gemini speech. Self-hosting is optional for those routes. Local mode requires a separately downloaded, checksum-checked model; native provider mode sends recordings to only the provider selected in onboarding. Neither path has passed the live model/provider and hardware checks required for a release.
+
 ## Configure
 
 Run `python3 scripts/init-backend.py` from the repository root. It generates a private `.env` and `data/desktop-access-token.txt` without printing their values. It refuses to overwrite existing secrets. Preserve the encryption key securely; do not generate a replacement over an existing database.

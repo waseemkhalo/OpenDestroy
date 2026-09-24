@@ -1,8 +1,14 @@
 # Third-party notices
 
-This inventory follows this repository's Cargo/npm lockfiles. Dependency licenses remain their authors' licenses; the project MIT license does not replace them. Original notice files available for the exact resolved versions are preserved under `third_party/licenses`.
+This inventory follows this repository's Cargo/npm lockfiles. Dependency licenses remain their authors' licenses; the project MIT license does not replace them. Original notice files available for the exact resolved versions are preserved under `third_party/licenses`; exact-version cache or notice gaps are called out below.
 
 The lockfiles include development, optional and cross-platform packages. Review the actual shipped dependency set and any reciprocal-license obligations before distributing binaries. An unavailable notice is a release-review item for artifacts that contain that dependency, not evidence that it is unlicensed.
+
+## Project artwork review
+
+The Connections UI bundles the official Google Drive product logo from [Google's Drive branding guidance](https://developers.google.com/workspace/drive/api/guides/branding) (`apps/desktop/public/provider-logos/google-drive.png`) and the official GIPHY square icon linked by the [GIPHY developer site](https://developers.giphy.com/) ([source asset](https://developers.giphy.com/branch/master/icons/icon-192x192.png?v=22918c3c9ee5a9845590e3d909ab493c), `apps/desktop/public/provider-logos/giphy.png`). These marks remain the property of Google LLC and GIPHY, respectively. They are bundled locally for display in the provider connection UI; the app makes no runtime request for either logo. Google Drive usage is subject to Google's trademark and Drive API terms. GIPHY's API attribution requirements apply where GIPHY content is used; this provider icon does not replace content attribution.
+
+The current app bundle artwork is `apps/desktop/src-tauri/icons/icon.png`. The current UI also references `apps/desktop/public/art/command-surface.png`, `apps/desktop/public/art/selection-brush.png`, and `apps/desktop/public/art/voice-ink.png`. `voice-ink.png` and `selection-brush.png` were generated with the built-in ImageGen from user-approved mockup/design direction in this turn; no new external art licenses are claimed for them. The two bundled Cormorant font files under `apps/desktop/public/fonts/` are Cormorant, licensed under the SIL Open Font License (OFL). The creator/source, ownership and redistribution permission for the remaining artwork and icon have not been verified in this inventory. Before publishing source or distributing a binary, the owner must confirm those rights and add attribution or a separate notice if the assets require one. Do not treat the files' presence in the repository or `scripts/public-files.json` as licensing evidence.
 
 | Ecosystem | Package | Version | Declared license |
 |---|---|---|---|
@@ -90,6 +96,11 @@ The lockfiles include development, optional and cross-platform packages. Review 
 | Rust | dpi | 0.1.2 | Apache-2.0 AND MIT |
 | Rust | dtoa | 1.0.11 | MIT OR Apache-2.0 |
 | Rust | dtoa-short | 0.3.5 | MPL-2.0 |
+| Rust | transcribe-rs | 0.3.11 | MIT |
+| Rust | ort | 2.0.0-rc.12 | MIT OR Apache-2.0 |
+| Rust | ort-sys | 2.0.0-rc.12 | MIT OR Apache-2.0 |
+| Rust | ndarray | 0.17.2 | MIT OR Apache-2.0 |
+| Rust | rustfft | 6.4.1 | MIT OR Apache-2.0 |
 | Rust | dtor | 0.3.0 | Apache-2.0 OR MIT |
 | Rust | dtor-proc-macro | 0.0.6 | Apache-2.0 OR MIT |
 | Rust | dunce | 1.0.5 | CC0-1.0 OR MIT-0 OR Apache-2.0 |
@@ -360,6 +371,18 @@ The lockfiles include development, optional and cross-platform packages. Review 
 | Rust | string_cache_codegen | 0.6.1 | MIT OR Apache-2.0 |
 | Rust | strsim | 0.11.1 | MIT |
 | Rust | subtle | 2.6.1 | BSD-3-Clause |
+| Rust | symphonia | 0.5.5 | MPL-2.0 |
+| Rust | symphonia-bundle-flac | 0.5.5 | MPL-2.0 |
+| Rust | symphonia-bundle-mp3 | 0.5.5 | MPL-2.0 |
+| Rust | symphonia-codec-aac | 0.5.5 | MPL-2.0 |
+| Rust | symphonia-codec-pcm | 0.5.5 | MPL-2.0 |
+| Rust | symphonia-codec-vorbis | 0.5.5 | MPL-2.0 |
+| Rust | symphonia-core | 0.5.5 | MPL-2.0 |
+| Rust | symphonia-format-isomp4 | 0.5.5 | MPL-2.0 |
+| Rust | symphonia-format-ogg | 0.5.5 | MPL-2.0 |
+| Rust | symphonia-format-riff | 0.5.5 | MPL-2.0 |
+| Rust | symphonia-metadata | 0.5.5 | MPL-2.0 |
+| Rust | symphonia-utils-xiph | 0.5.5 | MPL-2.0 |
 | Rust | swift-rs | 1.0.7 | MIT OR Apache-2.0 |
 | Rust | syn | 1.0.109 | MIT OR Apache-2.0 |
 | Rust | syn | 2.0.119 | MIT OR Apache-2.0 |
@@ -468,6 +491,8 @@ The lockfiles include development, optional and cross-platform packages. Review 
 | Rust | webview2-com | 0.38.2 | MIT |
 | Rust | webview2-com-macros | 0.8.1 | MIT |
 | Rust | webview2-com-sys | 0.38.2 | MIT |
+| Rust | whisper-rs | 0.16.0 | Unlicense |
+| Rust | whisper-rs-sys | 0.15.0 | Unlicense |
 | Rust | winapi | 0.3.9 | MIT/Apache-2.0 |
 | Rust | winapi-i686-pc-windows-gnu | 0.4.0 | MIT/Apache-2.0 |
 | Rust | winapi-util | 0.1.11 | Unlicense OR MIT |
@@ -684,6 +709,12 @@ The lockfiles include development, optional and cross-platform packages. Review 
 
 ## Notices requiring review
 
+- The public local speech path adds `transcribe-rs 0.3.11`, `ort 2.0.0-rc.12`, and `ort-sys 2.0.0-rc.12` to the locked native graph. Preserve their exact MIT OR Apache-2.0 notices from the Cargo cache before distributing a binary. The ONNX Runtime archive is a build-time dependency and must not become an untracked runtime download.
+- The reviewed NVIDIA Parakeet TDT 0.6B v3 ONNX export is a separate model resource, not a Rust dependency. Its upstream model cards declare CC BY 4.0; see [docs/LOCAL_MODELS.md](docs/LOCAL_MODELS.md) for the pinned commit, component URLs, sizes and upstream hash metadata. Review attribution and redistribution obligations before enabling an automated model bundle.
+- The locked `whisper-rs 0.16.0` and `whisper-rs-sys 0.15.0` packages declare Unlicense in their local Cargo manifests. The exact `whisper-rs` package cache contains `LICENSE`; `whisper-rs-sys` includes the upstream `whisper.cpp/LICENSE` in its crate package manifest but no top-level license file was present in the inspected local cache. The package source is [whisper-rs on Codeberg](https://codeberg.org/tazz4843/whisper-rs); preserve the exact package/upstream license text, including the declared `whisper.cpp/LICENSE` path, in release notices before distributing a binary. This records package metadata and source locations, not a separate legal clearance of the vendored C/C++ source.
+- The locked Symphonia family (`symphonia` plus its 11 enabled feature crates, all `0.5.5`) declares MPL-2.0 in the local Cargo manifests. The authoritative [Symphonia `rel-0.5` license](https://github.com/pdeljanov/Symphonia/blob/rel-0.5/LICENSE) is the upstream license source. No exact-version Symphonia notice is currently copied under `third_party/licenses`; preserve the applicable notice and review MPL-2.0 file-level obligations before distributing a binary.
+- The native catalog can download the six Whisper artifacts and the five-file Parakeet export at pinned URLs. Their upstream-declared metadata, exact hashes, bundled-vs-user-downloaded distinction and unresolved provenance/redistribution questions are recorded in [docs/MODEL_LICENSES.md](docs/MODEL_LICENSES.md). Hash verification proves byte identity only; it does not establish ownership, permission or legal clearance.
+
 - Rust alloc-stdlib 0.2.2
 - Rust block2 0.6.2
 - Rust dispatch2 0.3.1
@@ -797,3 +828,9 @@ The lockfiles include development, optional and cross-platform packages. Review 
 - npm is-reference 3.0.3
 - npm locate-character 3.0.0
 - npm stackback 0.0.2
+
+## App identification icons
+
+`apps/desktop/public/app-icons/0.png` through `19.png` identify, in order: ChatGPT, Claude, Gemini, Microsoft Copilot, Perplexity, Cursor, VS Code, Slack, Microsoft Teams, Gmail, Outlook, Google Docs, Microsoft Word, Notion, Linear, Asana, Jira, Zoom, WhatsApp, and GitHub.
+
+These third-party brand marks remain the property of their respective owners; the project's MIT license does not grant rights to those marks. Their display indicates examples of editable-field destinations, not endorsement, affiliation, or individually certified compatibility. Icons were retrieved on 2026-09-21 from Google's favicon service using the corresponding product domains; the Google Docs icon comes directly from `https://ssl.gstatic.com/docs/documents/images/kix-favicon7.ico`. Assets are bundled locally; the running app does not contact the favicon service.

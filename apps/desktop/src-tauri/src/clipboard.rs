@@ -73,26 +73,75 @@ pub fn paste_prepared_preserving_clipboard<F>(prepare: F) -> Result<(), ActError
 where
     F: FnOnce() -> Result<(), ActError>,
 {
+    // Do not overwrite a clipboard update that happened while the rich
+    // snapshot was being read. This is the first point at which the old code
+    // could silently clobber a user's newer clipboard contents.
+    let prior_change_count = clipboard_change_count();
     let prior = read_clipboard()?;
+    if clipboard_change_count() != prior_change_count {
+        return Err(ActError::Exec(
+            "clipboard changed before inline paste could start".into(),
+        ));
+    }
     if let Err(error) = prepare() {
-        let _ = restore_clipboard(&prior);
+        restore_clipboard_if_unchanged(&prior, prior_change_count);
         return Err(error);
     }
-    #[cfg(target_os = "macos")]
-    let prepared_change_count = objc2_app_kit::NSPasteboard::generalPasteboard().changeCount();
+    let prepared_change_count = clipboard_change_count();
     if let Err(error) = paste_from_clipboard() {
-        let _ = restore_clipboard(&prior);
+        restore_clipboard_if_unchanged(&prior, prepared_change_count);
         return Err(error);
     }
     thread::sleep(Duration::from_millis(CLIPBOARD_RESTORE_DELAY_MS));
-    #[cfg(target_os = "macos")]
-    if objc2_app_kit::NSPasteboard::generalPasteboard().changeCount() != prepared_change_count {
+    if clipboard_change_count() != prepared_change_count {
         return Ok(());
     }
     if let Err(error) = restore_clipboard(&prior) {
         tracing::warn!(%error, "paste succeeded but prior clipboard could not be restored");
     }
     Ok(())
+}
+
+/// Returns the pasteboard generation when macOS exposes one. A missing value
+/// on non-macOS keeps the helper testable while preserving the existing
+/// platform fallback behavior.
+fn clipboard_change_count() -> Option<isize> {
+    #[cfg(target_os = "macos")]
+    {
+        Some(objc2_app_kit::NSPasteboard::generalPasteboard().changeCount())
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        None
+    }
+}
+
+fn restore_clipboard_if_unchanged(snapshot: &ClipboardSnapshot, expected: Option<isize>) {
+    if should_restore_clipboard(expected, clipboard_change_count()) {
+        let _ = restore_clipboard(snapshot);
+    } else {
+        tracing::debug!("clipboard changed; preserving the newer user contents");
+    }
+}
+
+fn should_restore_clipboard(expected: Option<isize>, current: Option<isize>) -> bool {
+    expected == current
+}
+
+#[cfg(test)]
+mod tests {
+    use super::should_restore_clipboard;
+
+    #[test]
+    fn restore_is_skipped_after_a_new_clipboard_generation() {
+        assert!(should_restore_clipboard(Some(17), Some(17)));
+        assert!(!should_restore_clipboard(Some(17), Some(18)));
+    }
+
+    #[test]
+    fn non_macos_fallback_has_no_generation_to_conflict() {
+        assert!(should_restore_clipboard(None, None));
+    }
 }
 
 /// Leaves `text` on the clipboard for a user-controlled paste.
@@ -179,6 +228,9 @@ fn write_file_to_clipboard(_path: &Path) -> Result<(), ActError> {
 struct ClipboardSnapshot {
     items: Vec<objc2::rc::Retained<objc2_app_kit::NSPasteboardItem>>,
 }
+
+#[cfg(not(target_os = "macos"))]
+type ClipboardSnapshot = Vec<u8>;
 
 #[cfg(target_os = "macos")]
 fn read_clipboard() -> Result<ClipboardSnapshot, ActError> {

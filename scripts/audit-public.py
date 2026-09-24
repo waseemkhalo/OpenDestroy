@@ -20,6 +20,15 @@ SECRET_PATTERNS = {
     'personal source path': rb'/(?:Users|home)/[A-Za-z0-9_.-]+/',
 }
 SENSITIVE_SUFFIXES = ('.key', '.p12', '.p8', '.pem', '.sqlite', '.sqlite3', '.db', '.dmg', '.zip', '.tar.gz')
+PUBLIC_BINARY_PATHS = {
+    'apps/desktop/src-tauri/icons/icon.png',
+    'apps/desktop/public/art/command-surface.png',
+    'apps/desktop/public/art/selection-brush.png',
+    'apps/desktop/public/art/settings-landscape-v2.png',
+    'apps/desktop/public/art/voice-ink.png',
+    'apps/desktop/public/fonts/cormorant-medium.ttf',
+    'apps/desktop/public/fonts/cormorant-regular.ttf',
+}
 
 def git(root, *args, check=True):
     return subprocess.run(['git', '-C', str(root), *args], stdout=subprocess.PIPE,
@@ -48,7 +57,7 @@ def inspect(name, data, mode, allowed):
     for label, pattern in SECRET_PATTERNS.items():
         if re.search(pattern, data):
             issues.append(label)
-    if b'\0' in data and name != 'apps/desktop/src-tauri/icons/icon.png':
+    if b'\0' in data and name not in PUBLIC_BINARY_PATHS:
         issues.append('unexpected binary file')
     return issues
 

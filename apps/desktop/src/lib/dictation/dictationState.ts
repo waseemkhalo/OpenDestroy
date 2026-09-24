@@ -14,6 +14,13 @@ export type DictationSnapshot = {
   lastText: string;
 };
 
+export type RecentDictation = {
+  id: string;
+  text: string;
+  completedAt: number;
+  words: number;
+};
+
 /** One local calendar day's totals. */
 type DayTotals = { words: number; speakingMs: number };
 
@@ -60,6 +67,7 @@ const MAX_DAYS = 90;
 /// would be refused is never written locally either.
 const MAX_DAY_WORDS = 200_000;
 const MAX_DAY_SPEAKING_MS = 86_400_000;
+const MAX_RECENT_DICTATIONS = 20;
 
 // Transcribed customer text is deliberately memory-only. Numeric usage metrics
 // persist locally as a cache of the rep's server-side counters.
@@ -67,6 +75,9 @@ let last = {
   teamId: null as string | null,
   text: "",
 };
+let lastRecordId: string | null = null;
+let recentDictations: Array<RecentDictation & { teamId: string | null }> = [];
+let recentDictationSequence = 0;
 
 // Vocabulary lives on the backend, envelope-encrypted and scoped to
 // (team, user) — see migration 105. This map is only a read-through cache so
@@ -81,6 +92,15 @@ function metricsKey(teamId: string | null): string | null {
 function localDay(timestamp: number): string {
   const date = new Date(timestamp);
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function currentLocalWeek(now: number): { start: string; end: string } {
+  const date = new Date(now);
+  const monday = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7));
+  const sunday = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate());
+  sunday.setDate(sunday.getDate() + 6);
+  return { start: localDay(monday.getTime()), end: localDay(sunday.getTime()) };
 }
 
 function count(value: unknown, max: number): number {
@@ -251,7 +271,13 @@ export function recordDictation(event: DictationEvent): DictationSnapshot {
   };
   const next = trimMetrics({ byDay, carried: metrics.carried });
   writeMetrics(event.teamId, next);
+  const id = `${completedAt}-${++recentDictationSequence}`;
+  recentDictations = [
+    { id, teamId: event.teamId, text: event.text, completedAt, words: countDictationWords(event.text) },
+    ...recentDictations,
+  ].slice(0, MAX_RECENT_DICTATIONS);
   last = { teamId: event.teamId, text: event.text };
+  lastRecordId = id;
   if (typeof window !== "undefined") {
     window.dispatchEvent(new CustomEvent(DICTATION_UPDATED_EVENT));
   }
@@ -266,6 +292,32 @@ export function readDictationSnapshot(teamId: string | null): DictationSnapshot 
   const metrics = readMetrics(teamId);
   const sameTeam = Boolean(teamId) && last.teamId === teamId;
   return { ...totals(metrics), lastText: sameTeam ? last.text : "" };
+}
+
+export function readWeeklyDictationSnapshot(
+  teamId: string | null,
+  now = Date.now(),
+): DictationSnapshot {
+  const metrics = readMetrics(teamId);
+  const { start, end } = currentLocalWeek(now);
+  const byDay = Object.fromEntries(
+    Object.entries(metrics.byDay).filter(([day]) => day >= start && day <= end),
+  );
+  const week = sumDays(byDay);
+  const sameTeam = Boolean(teamId) && last.teamId === teamId;
+  return {
+    words: week.words,
+    speakingMs: week.speakingMs,
+    days: Object.keys(byDay).sort(),
+    lastText: sameTeam ? last.text : "",
+  };
+}
+
+export function readRecentDictations(teamId: string | null): RecentDictation[] {
+  if (!teamId) return [];
+  return recentDictations
+    .filter((record) => record.teamId === teamId)
+    .map(({ teamId: _teamId, ...record }) => ({ ...record }));
 }
 
 type UsageResponse = { words?: unknown; speaking_ms?: unknown; days?: unknown };
@@ -388,7 +440,11 @@ export async function syncDictationUsage(teamId: string | null): Promise<Dictati
 
 export function clearLastDictation(teamId: string | null): void {
   if (last.teamId !== teamId) return;
+  if (lastRecordId) {
+    recentDictations = recentDictations.filter((record) => record.id !== lastRecordId);
+  }
   last = { teamId: null, text: "" };
+  lastRecordId = null;
   if (typeof window !== "undefined") {
     window.dispatchEvent(new CustomEvent(DICTATION_UPDATED_EVENT));
   }
@@ -461,8 +517,21 @@ export async function removePersonalDictationTerm(
   return [...terms];
 }
 
+/** Clear only this owner's transient transcripts, without erasing usage or vocabulary. */
+export function clearRecentDictations(teamId: string | null): void {
+  if (!teamId) return;
+  recentDictations = recentDictations.filter((item) => item.teamId !== teamId);
+  if (last.teamId === teamId) {
+    last = { teamId: null, text: "" };
+    lastRecordId = null;
+  }
+  if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent(DICTATION_UPDATED_EVENT));
+}
+
 export function clearDictationMemory(): void {
   last = { teamId: null, text: "" };
+  lastRecordId = null;
+  recentDictations = [];
   personalTermsByTeam.clear();
   if (typeof window !== "undefined") {
     window.dispatchEvent(new CustomEvent(DICTATION_UPDATED_EVENT));

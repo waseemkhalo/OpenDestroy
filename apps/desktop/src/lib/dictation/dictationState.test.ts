@@ -2,13 +2,17 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
 
 import {
+  DICTATION_UPDATED_EVENT,
   clearLastDictation,
   addPersonalDictationTerm,
   clearDictationMemory,
+  clearRecentDictations,
   countDictationWords,
   dictationAverageWpm,
   dictationDayStreak,
+  readRecentDictations,
   readDictationSnapshot,
+  readWeeklyDictationSnapshot,
   loadPersonalDictationTerms,
   readPersonalDictationTerms,
   recordDictation,
@@ -21,6 +25,7 @@ vi.mock("@tauri-apps/api/core", () => ({
 }));
 
 const mockedInvoke = vi.mocked(invoke);
+const dispatchEvent = vi.fn();
 
 /// Stands in for the backend: echoes back whatever the client asked to
 /// store, which is what the real route does after sanitising.
@@ -45,8 +50,9 @@ function storage() {
 describe("dictation state", () => {
   beforeEach(() => {
     mockedInvoke.mockReset();
+    dispatchEvent.mockReset();
     vi.stubGlobal("localStorage", storage());
-    vi.stubGlobal("window", { dispatchEvent: vi.fn() });
+    vi.stubGlobal("window", { dispatchEvent });
     clearLastDictation("team-a");
     clearDictationMemory();
   });
@@ -77,6 +83,100 @@ describe("dictation state", () => {
     const snapshot = readDictationSnapshot("team-a");
     expect(dictationDayStreak(snapshot, new Date(2026, 7, 23))).toBe(3);
     expect(dictationAverageWpm(snapshot)).toBe(120);
+  });
+
+  it("derives the current local Monday-to-Sunday totals at both week boundaries", () => {
+    recordDictation({
+      teamId: "team-a",
+      text: "before week",
+      elapsedMs: 100,
+      completedAt: new Date(2026, 7, 23, 23, 59, 59, 999).getTime(),
+    });
+    recordDictation({
+      teamId: "team-a",
+      text: "at week start",
+      elapsedMs: 200,
+      completedAt: new Date(2026, 7, 24, 0, 0, 0).getTime(),
+    });
+    recordDictation({
+      teamId: "team-a",
+      text: "at week end",
+      elapsedMs: 300,
+      completedAt: new Date(2026, 7, 30, 23, 59, 59, 999).getTime(),
+    });
+    recordDictation({
+      teamId: "team-a",
+      text: "after week",
+      elapsedMs: 400,
+      completedAt: new Date(2026, 7, 31, 0, 0, 0).getTime(),
+    });
+
+    expect(readWeeklyDictationSnapshot("team-a", new Date(2026, 7, 24).getTime())).toMatchObject({
+      words: 6,
+      speakingMs: 500,
+      days: ["2026-08-24", "2026-08-30"],
+    });
+    expect(readWeeklyDictationSnapshot("team-a", new Date(2026, 7, 30, 23, 59).getTime())).toMatchObject({
+      words: 6,
+      speakingMs: 500,
+      days: ["2026-08-24", "2026-08-30"],
+    });
+  });
+
+  it("keeps recent dictations bounded, team-scoped, and resettable", () => {
+    for (let index = 0; index < 25; index += 1) {
+      recordDictation({ teamId: "team-a", text: `entry ${index}`, elapsedMs: 1_000, completedAt: index });
+    }
+
+    expect(readRecentDictations("team-a")).toHaveLength(20);
+    expect(readRecentDictations("team-a")[0]).toMatchObject({ text: "entry 24", words: 2 });
+    expect(readRecentDictations("team-a").at(-1)).toMatchObject({ text: "entry 5", words: 2 });
+
+    recordDictation({ teamId: "team-b", text: "other team", elapsedMs: 1_000, completedAt: 100 });
+
+    expect(readRecentDictations("team-a")).toHaveLength(19);
+    expect(readRecentDictations("team-a")[0]).toMatchObject({ text: "entry 24", words: 2 });
+    expect(readRecentDictations("team-a").at(-1)).toMatchObject({ text: "entry 6", words: 2 });
+    expect(readRecentDictations("team-b")).toHaveLength(1);
+
+    clearLastDictation("team-b");
+    expect(readRecentDictations("team-b")).toEqual([]);
+    expect(readRecentDictations("team-a")).toHaveLength(19);
+
+    clearDictationMemory();
+    expect(readRecentDictations("team-a")).toEqual([]);
+    expect(readRecentDictations("team-b")).toEqual([]);
+  });
+
+  it("clears only the requested session's text, preserving usage and vocabulary", async () => {
+    serverHolding(["Destroy"]);
+    await loadPersonalDictationTerms("team-a");
+    recordDictation({ teamId: "team-a", text: "a private sentence", elapsedMs: 1000 });
+    recordDictation({ teamId: "team-b", text: "other owner", elapsedMs: 1000 });
+    clearRecentDictations(null);
+    expect(readRecentDictations("team-a")).toHaveLength(1);
+    clearRecentDictations("team-a");
+    expect(readRecentDictations("team-a")).toEqual([]);
+    expect(readRecentDictations("team-b")).toHaveLength(1);
+    expect(readDictationSnapshot("team-a").words).toBe(3);
+    expect(readPersonalDictationTerms("team-a")).toEqual(["Destroy"]);
+    clearRecentDictations("team-b");
+    expect(readDictationSnapshot("team-b").lastText).toBe("");
+  });
+
+  it("does not expose unresolved-owner dictations and notifies on account reset", () => {
+    recordDictation({ teamId: null, text: "unresolved owner", elapsedMs: 1_000 });
+    recordDictation({ teamId: "team-a", text: "team text", elapsedMs: 1_000 });
+
+    expect(readRecentDictations(null)).toEqual([]);
+    dispatchEvent.mockClear();
+
+    clearDictationMemory();
+
+    expect(readRecentDictations("team-a")).toEqual([]);
+    expect(dispatchEvent).toHaveBeenLastCalledWith(
+      expect.objectContaining({ type: DICTATION_UPDATED_EVENT }),
+    );
   });
 
   it("holds the streak through a day the rep has not dictated in yet", () => {

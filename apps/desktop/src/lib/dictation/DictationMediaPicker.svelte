@@ -16,6 +16,7 @@
     onKindChange,
     onSelect,
     onFavorite,
+    allowFavorites = true,
     onRotate,
     onCancel,
   }: {
@@ -34,6 +35,7 @@
     onKindChange: (kind: DictationMediaKind) => void;
     onSelect: (index: number) => void;
     onFavorite: (index: number) => void;
+    allowFavorites?: boolean;
     onRotate: () => void;
     onCancel: () => void;
   } = $props();
@@ -94,9 +96,11 @@
             <img src={result.preview_url} alt="" draggable="false" />
             <span class="media-number">{index + 1}</span>
           </button>
-          <button class:favorited={Boolean(result.favorite_id)} class="favorite-button" type="button" aria-label={result.favorite_id ? "Remove from favorites" : "Add to favorites"} onclick={() => onFavorite(index)}>
-            <Heart size={11} strokeWidth={1.8} />
-          </button>
+          {#if allowFavorites}
+            <button class:favorited={Boolean(result.favorite_id)} class="favorite-button" type="button" aria-label={result.favorite_id ? "Remove from favorites" : "Add to favorites"} onclick={() => onFavorite(index)}>
+              <Heart size={11} strokeWidth={1.8} />
+            </button>
+          {/if}
         </div>
       {/each}
     </div>

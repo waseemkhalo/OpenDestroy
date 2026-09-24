@@ -6,6 +6,7 @@ import {
   parseDictationMediaVoiceChoice,
   refreshDictationMediaAvailability,
   searchDictationMedia,
+  mediaDeliveryRequest,
 } from "./giphy";
 
 const invoke = vi.fn();
@@ -100,6 +101,19 @@ describe("extractDictationMediaIntent", () => {
       kind: "gif",
       query: "spongebob laughing",
       leadingText: "omg that is so funny",
+    });
+  });
+
+  it("does not paste a request scaffold addressed to Destroy", () => {
+    expect(extractDictationMediaIntent("Hey Amy, can you add a laughing GIF")).toEqual({
+      kind: "gif",
+      query: "laughing",
+      leadingText: "Hey Amy",
+    });
+    expect(extractDictationMediaIntent("could you insert a thank you sticker")).toEqual({
+      kind: "sticker",
+      query: "thank you",
+      leadingText: "",
     });
   });
 
@@ -222,6 +236,38 @@ describe("searchDictationMedia", () => {
       method: "POST",
       path: "/v1/dictation/media/search",
       body: { query: "laughing", kind: "gif", offset: 0 },
+    });
+  });
+
+  it("rejects unbounded provider requests before IPC", async () => {
+    await expect(searchDictationMedia("x".repeat(51), "gif")).rejects.toThrow(
+      "Enter a GIPHY search query",
+    );
+    await expect(searchDictationMedia("laughing", "gif", -1)).rejects.toThrow(
+      "GIPHY search offset is out of range",
+    );
+    expect(invoke).not.toHaveBeenCalled();
+  });
+});
+
+describe("media delivery", () => {
+  it("uses native binary delivery for personal and backend provider results", () => {
+    const result = {
+      id: "gif-1",
+      title: "A GIF",
+      alt_text: "A waving GIF",
+      preview_url: "https://media.giphy.com/preview.gif",
+      content_url: "https://media.giphy.com/content.gif",
+      source_url: "https://giphy.com/gifs/gif-1",
+      width: 320,
+      height: 180,
+      kind: "gif" as const,
+    };
+    expect(mediaDeliveryRequest(result, "Hi Amy")).toEqual({
+      leadingText: "Hi Amy",
+      contentUrl: result.content_url,
+      sourceUrl: result.source_url,
+      altText: result.alt_text,
     });
   });
 });

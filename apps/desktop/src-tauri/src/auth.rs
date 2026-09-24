@@ -2,11 +2,19 @@ use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 use std::sync::{Mutex, OnceLock};
 use tauri::{Emitter, Manager};
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SessionMode {
+    Backend,
+    Native(crate::public_setup::SpeechProvider),
+}
+
 #[derive(Clone)]
 pub struct CallStreamSessionSnapshot {
     pub access_token: String,
     pub backend_url: String,
     pub user_id: String,
+    pub mode: SessionMode,
     generation: u64,
 }
 #[derive(Default)]
@@ -35,6 +43,43 @@ pub fn backend_url() -> String {
 pub fn cached_call_stream_session_snapshot() -> Option<CallStreamSessionSnapshot> {
     session().lock().ok()?.current.clone()
 }
+pub(crate) fn current_generation() -> Result<u64, String> {
+    Ok(session().lock().map_err(|_| "Session busy")?.generation)
+}
+
+/// Invalidates live sessions and transient dictation work while retaining
+/// persisted connection credentials. Used by the non-destructive onboarding
+/// restart flow.
+pub(crate) fn invalidate_session(app: &tauri::AppHandle) -> Result<u64, String> {
+    let mut s = session().lock().map_err(|_| "Session busy")?;
+    s.generation = s.generation.wrapping_add(1);
+    let generation = s.generation;
+    s.current = None;
+    drop(s);
+    crate::dictation_stream::prepare_account_boundary(app)?;
+    app.state::<crate::native_audio::NativeAudio>().clear();
+    crate::dictation::destroy_dictation_clear_sensitive_state(app.state());
+    let _ = app.emit("destroy://account-changed", ());
+    Ok(generation)
+}
+pub(crate) fn install_native_session(
+    generation: u64,
+    provider: crate::public_setup::SpeechProvider,
+    key: String,
+) -> Result<(), String> {
+    let mut guard = session().lock().map_err(|_| "Session busy")?;
+    if guard.generation != generation {
+        return Err("Connection changed; try again".into());
+    }
+    guard.current = Some(CallStreamSessionSnapshot {
+        access_token: key,
+        backend_url: crate::public_setup::PUBLIC_BACKEND_URL.into(),
+        user_id: crate::public_setup::LOCAL_USER_ID.into(),
+        mode: SessionMode::Native(provider),
+        generation,
+    });
+    Ok(())
+}
 pub fn call_stream_session_snapshot_is_current(auth: &CallStreamSessionSnapshot) -> bool {
     session().lock().is_ok_and(|s| {
         s.generation == auth.generation
@@ -44,10 +89,10 @@ pub fn call_stream_session_snapshot_is_current(auth: &CallStreamSessionSnapshot)
     })
 }
 pub async fn ensure_fresh_session() -> Result<(), String> {
-    if cached_call_stream_session_snapshot().is_some() {
-        Ok(())
-    } else {
-        Err("Connect your dictation backend in Settings".into())
+    match cached_call_stream_session_snapshot() {
+        Some(snapshot) if matches!(snapshot.mode, SessionMode::Backend) => Ok(()),
+        Some(_) => Err("Live dictation is unavailable in native speech mode".into()),
+        None => Err("Connect your dictation backend in Settings".into()),
     }
 }
 fn validate_url(raw: &str) -> Result<String, String> {
@@ -116,7 +161,7 @@ async fn request(
     }
     Ok(value)
 }
-fn boundary(app: &tauri::AppHandle) -> Result<u64, String> {
+pub(crate) fn boundary(app: &tauri::AppHandle) -> Result<u64, String> {
     let mut s = session().lock().map_err(|_| "Session busy")?;
     s.generation += 1;
     let generation = s.generation;
@@ -139,6 +184,7 @@ fn boundary(app: &tauri::AppHandle) -> Result<u64, String> {
     };
     drop(s);
     let streams = crate::dictation_stream::prepare_account_boundary(app);
+    app.state::<crate::native_audio::NativeAudio>().clear();
     crate::dictation::destroy_dictation_clear_sensitive_state(app.state());
     let _ = app.emit("destroy://account-changed", ());
     streams?;
@@ -161,6 +207,7 @@ pub async fn configure_backend(
         access_token: token.clone(),
         backend_url: url.clone(),
         user_id: String::new(),
+        mode: SessionMode::Backend,
         generation,
     };
     let result = request(&snapshot, "GET", "/v1/account", serde_json::Value::Null).await?;
@@ -189,13 +236,17 @@ pub async fn configure_backend(
     })
     .map_err(|_| "Cannot encode connection")?;
     std::fs::write(&path, config).map_err(|_| "Cannot save connection")?;
+    crate::public_setup::clear_saved_native_profile()?;
     s.current = Some(snapshot);
     Ok(result)
 }
 #[tauri::command]
 pub async fn restore_connection() -> Result<serde_json::Value, String> {
     if let Some(a) = cached_call_stream_session_snapshot() {
-        return Ok(serde_json::json!({"user_id":a.user_id,"backend_url":a.backend_url}));
+        return Ok(crate::public_setup::status_for_session(&a));
+    }
+    if crate::public_setup::has_saved_native_profile() {
+        return crate::public_setup::restore_native_connection().await;
     }
     let (generation, c, url, token) = {
         let guard = session().lock().map_err(|_| "Session busy")?;
@@ -217,6 +268,7 @@ pub async fn restore_connection() -> Result<serde_json::Value, String> {
         access_token: String::from_utf8(token).map_err(|_| "Invalid access token")?,
         backend_url: url.clone(),
         user_id: c.user_id.clone(),
+        mode: SessionMode::Backend,
         generation,
     };
     let result = request(&a, "GET", "/v1/account", serde_json::Value::Null).await?;
@@ -232,7 +284,9 @@ pub async fn restore_connection() -> Result<serde_json::Value, String> {
 }
 #[tauri::command]
 pub fn disconnect_backend(app: tauri::AppHandle) -> Result<(), String> {
-    boundary(&app).map(|_| ())
+    boundary(&app)?;
+    crate::public_setup::clear_saved_native_profile()?;
+    Ok(())
 }
 pub(crate) fn validate_expected_account(
     snapshot: &CallStreamSessionSnapshot,
@@ -263,13 +317,13 @@ pub async fn backend_api(
         expected_user_id.as_deref(),
         expected_backend_url.as_deref(),
     )?;
-    let result = request(
-        &snapshot,
-        &method,
-        &path,
-        body.unwrap_or(serde_json::Value::Null),
-    )
-    .await?;
+    let body = body.unwrap_or(serde_json::Value::Null);
+    let result = match snapshot.mode {
+        SessionMode::Backend => request(&snapshot, &method, &path, body).await?,
+        SessionMode::Native(_) => {
+            crate::public_setup::native_backend_api(&snapshot, &method, &path, body).await?
+        }
+    };
     if !call_stream_session_snapshot_is_current(&snapshot) {
         return Err("Account changed; discarded response".into());
     }
@@ -300,6 +354,7 @@ mod tests {
             access_token: "test".into(),
             backend_url: "https://api.example.com".into(),
             user_id: "owner-a".into(),
+            mode: SessionMode::Backend,
             generation: 0,
         };
         assert!(validate_expected_account(
@@ -345,13 +400,26 @@ mod tests {
 pub async fn export_personal_data(app: tauri::AppHandle) -> Result<String, String> {
     use std::io::Write;
     let snapshot = cached_call_stream_session_snapshot().ok_or("Connect a backend first")?;
-    let data = request(
-        &snapshot,
-        "GET",
-        "/v1/account/export",
-        serde_json::Value::Null,
-    )
-    .await?;
+    let data = match snapshot.mode {
+        SessionMode::Backend => {
+            request(
+                &snapshot,
+                "GET",
+                "/v1/account/export",
+                serde_json::Value::Null,
+            )
+            .await?
+        }
+        SessionMode::Native(_) => {
+            crate::public_setup::native_backend_api(
+                &snapshot,
+                "GET",
+                "/v1/account/export",
+                serde_json::Value::Null,
+            )
+            .await?
+        }
+    };
     let bytes = serde_json::to_vec_pretty(&data).map_err(|_| "Cannot encode export")?;
     let directory = app
         .path()

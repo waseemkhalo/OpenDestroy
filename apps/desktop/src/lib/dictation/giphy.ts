@@ -1,4 +1,5 @@
 import { invokeAccount as invoke } from "../account";
+import { invoke as invokeNative } from "@tauri-apps/api/core";
 
 export type DictationMediaKind = "gif" | "sticker";
 
@@ -38,6 +39,29 @@ export type DictationMediaIntent = {
   leadingText: string;
 };
 
+export type DictationMediaDeliveryRequest = {
+  leadingText: string;
+  contentUrl: string;
+  sourceUrl: string;
+  altText: string;
+};
+
+/** Keep provider results on the native binary-media delivery route. The native
+ * side revalidates the GIPHY URLs, bounds the download, preserves clipboard
+ * contents, and supplies the plain link fallback when inline media paste is
+ * unavailable. */
+export function mediaDeliveryRequest(
+  result: DictationMediaResult,
+  leadingText: string,
+): DictationMediaDeliveryRequest {
+  return {
+    leadingText,
+    contentUrl: result.content_url,
+    sourceUrl: result.source_url,
+    altText: result.alt_text,
+  };
+}
+
 export type DictationMediaVoiceChoice =
   | { type: "select"; index: number }
   | { type: "kind"; kind: DictationMediaKind }
@@ -45,6 +69,22 @@ export type DictationMediaVoiceChoice =
   | { type: "cancel" };
 
 let mediaAvailable = false;
+const MAX_MEDIA_QUERY_CHARS = 50;
+const MAX_MEDIA_OFFSET = 4999;
+
+function validateMediaRequest(query: string, kind: DictationMediaKind, offset: number): string {
+  const value = query.trim();
+  if (!value || [...value].length > MAX_MEDIA_QUERY_CHARS) {
+    throw new Error("Enter a GIPHY search query");
+  }
+  if (!Number.isSafeInteger(offset) || offset < 0 || offset > MAX_MEDIA_OFFSET) {
+    throw new Error("GIPHY search offset is out of range");
+  }
+  if (kind !== "gif" && kind !== "sticker") {
+    throw new Error("Choose GIF or sticker search");
+  }
+  return value;
+}
 
 /** Refreshes the server-owned provider capability without exposing its key. */
 export async function refreshDictationMediaAvailability(): Promise<boolean> {
@@ -103,6 +143,19 @@ function trimQuery(value: string): string {
   return value.trim().replace(/^[“”"']+|[“”"']+$/gu, "").trim();
 }
 
+const TRAILING_REQUEST =
+  /(?:^|[,;:]\s*|\s)(?:(?:can|could|would|will)\s+you(?:\s+please)?|i\s+(?:need|want)\s+(?:you\s+)?to|go\s+ahead\s+and|please)$/iu;
+
+function stripRequestScaffolding(value: string): string {
+  let text = value.trim().replace(/\s+/gu, " ");
+  let previous = "";
+  while (text !== previous) {
+    previous = text;
+    text = text.replace(TRAILING_REQUEST, "").replace(/[,;:\u2014-]+$/u, "").trim();
+  }
+  return text;
+}
+
 /**
  * Recognizes only explicit media commands. The captured phrase is sent to
  * GIPHY literally; Destroy does not rewrite customer-authored search text.
@@ -116,7 +169,7 @@ export function extractDictationMediaIntent(transcript: string): DictationMediaI
   return {
     kind: /^sticker/iu.test(match.groups.kind ?? "") ? "sticker" : "gif",
     query,
-    leadingText: (match.groups.leading ?? "").trim(),
+    leadingText: stripRequestScaffolding(match.groups.leading ?? ""),
   };
 }
 
@@ -154,15 +207,22 @@ export async function searchDictationMedia(
   kind: DictationMediaKind,
   offset = 0,
 ): Promise<DictationMediaSearchResponse> {
-  try {
-    return await invoke<DictationMediaSearchResponse>("backend_api", {
-      method: "POST",
-      path: "/v1/dictation/media/search",
-      body: { query, kind, offset },
-    });
-  } catch (error) {
-    throw error;
-  }
+  const value = validateMediaRequest(query, kind, offset);
+  return invoke<DictationMediaSearchResponse>("backend_api", {
+    method: "POST",
+    path: "/v1/dictation/media/search",
+    body: { query: value, kind, offset },
+  });
+}
+
+/** Direct personal-key search. Results are provider output, never fixtures. */
+export function searchDirectGiphy(
+  query: string,
+  kind: DictationMediaKind,
+  offset = 0,
+): Promise<DictationMediaSearchResponse> {
+  const value = validateMediaRequest(query, kind, offset);
+  return invokeNative<DictationMediaSearchResponse>("search_giphy", { query: value, kind, offset });
 }
 
 export async function loadDictationMediaFavorites(): Promise<DictationMediaFavorite[]> {

@@ -23,6 +23,9 @@ use tokio_tungstenite::{
 use uuid::Uuid;
 
 const MAX_PCM_FRAME_BYTES: usize = 64 * 1024;
+// Reject oversized envelopes before base64 decoding allocates their decoded
+// buffer. Four input bytes encode at most three PCM bytes.
+const MAX_PCM_FRAME_BASE64_BYTES: usize = ((MAX_PCM_FRAME_BYTES + 2) / 3) * 4;
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(12);
 const FINAL_TIMEOUT: Duration = Duration::from_secs(25);
 
@@ -143,20 +146,29 @@ pub async fn destroy_dictation_stream_send_audio(
     state: tauri::State<'_, DictationStreamHandle>,
 ) -> Result<(), String> {
     let session_id = Uuid::parse_str(&session_id).map_err(|_| "invalid dictation session")?;
-    let bytes = STANDARD
-        .decode(audio_base64.trim())
-        .map_err(|_| "invalid dictation audio chunk".to_string())?;
+    let bytes = decode_pcm_frame(&audio_base64)?;
     if bytes.is_empty() {
         return Ok(());
-    }
-    if bytes.len() > MAX_PCM_FRAME_BYTES || bytes.len() % 2 != 0 {
-        return Err("invalid dictation audio chunk".into());
     }
     let sender = authorized_sender(state.inner(), session_id)?;
     sender
         .send(DictationOutbound::Audio(bytes))
         .await
         .map_err(|_| "dictation stream closed".to_string())
+}
+
+fn decode_pcm_frame(audio_base64: &str) -> Result<Vec<u8>, String> {
+    let encoded = audio_base64.trim();
+    if encoded.len() > MAX_PCM_FRAME_BASE64_BYTES {
+        return Err("invalid dictation audio chunk".into());
+    }
+    let bytes = STANDARD
+        .decode(encoded)
+        .map_err(|_| "invalid dictation audio chunk".to_string())?;
+    if bytes.len() > MAX_PCM_FRAME_BYTES || bytes.len() % 2 != 0 {
+        return Err("invalid dictation audio chunk".into());
+    }
+    Ok(bytes)
 }
 
 #[tauri::command]
@@ -297,11 +309,15 @@ async fn run_stream(
         HeaderValue::from_str(&sample_rate_hz.to_string()).map_err(|_| "invalid_sample_rate")?,
     );
 
-    let (websocket, _) = match connect_async(request).await {
-        Ok(connection) => connection,
-        Err(_) => {
+    let (websocket, _) = match tokio::time::timeout(CONNECT_TIMEOUT, connect_async(request)).await {
+        Ok(Ok(connection)) => connection,
+        Ok(Err(_)) => {
             let _ = connected_tx.send(Err("Could not connect live dictation.".into()));
             return Err("connect_failed");
+        }
+        Err(_) => {
+            let _ = connected_tx.send(Err("Live dictation connection timed out.".into()));
+            return Err("connect_timeout");
         }
     };
     let (mut writer, mut reader) = websocket.split();
@@ -414,7 +430,9 @@ fn stream_url_for_base(base: &str) -> Result<String, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::stream_url_for_base;
+    use base64::Engine as _;
+
+    use super::{decode_pcm_frame, stream_url_for_base, MAX_PCM_FRAME_BASE64_BYTES};
 
     #[test]
     fn dictation_stream_url_uses_wss_for_production() {
@@ -430,5 +448,22 @@ mod tests {
             stream_url_for_base("http://127.0.0.1:8080").expect("url"),
             "ws://127.0.0.1:8080/v1/dictation/stream"
         );
+    }
+
+    #[test]
+    fn pcm_base64_limit_covers_the_largest_valid_frame() {
+        let valid = vec![0u8; 64 * 1024];
+        let encoded = base64::engine::general_purpose::STANDARD.encode(valid);
+        assert_eq!(encoded.len(), MAX_PCM_FRAME_BASE64_BYTES);
+        assert_eq!(
+            decode_pcm_frame(&encoded).expect("valid frame").len(),
+            64 * 1024
+        );
+    }
+
+    #[test]
+    fn oversized_pcm_envelope_is_rejected_before_decode() {
+        let oversized = "A".repeat(MAX_PCM_FRAME_BASE64_BYTES + 1);
+        assert!(decode_pcm_frame(&oversized).is_err());
     }
 }

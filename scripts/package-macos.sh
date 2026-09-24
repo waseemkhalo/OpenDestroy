@@ -11,12 +11,15 @@ DESTROY_CONFIG_DIR="$(mktemp -d -t destroy-dictation-release)"
 DESTROY_CONFIG="$DESTROY_CONFIG_DIR/config.json"
 trap 'rm -rf "$DESTROY_CONFIG_DIR"' EXIT
 python3 scripts/release-config.py "$DESTROY_CONFIG"
-(cd apps/desktop && npm run tauri -- build --target "$DESTROY_TARGET" --bundles app --config "$DESTROY_CONFIG")
 DESTROY_BUILD_ROOT="${CARGO_TARGET_DIR:-$DESTROY_ROOT/target}"
 case "$DESTROY_BUILD_ROOT" in /*) ;; *) DESTROY_BUILD_ROOT="$DESTROY_ROOT/$DESTROY_BUILD_ROOT";; esac
+# Cargo runs from the desktop package; resolve relative overrides here so the
+# build and subsequent packaging use the same repository-relative directory.
+export CARGO_TARGET_DIR="$DESTROY_BUILD_ROOT"
+(cd apps/desktop && npm run tauri -- build --target "$DESTROY_TARGET" --bundles app --config "$DESTROY_CONFIG")
 DESTROY_APP="$DESTROY_BUILD_ROOT/$DESTROY_TARGET/release/bundle/macos/Destroy Dictation.app"
 codesign --verify --deep --strict --verbose=2 "$DESTROY_APP"
-codesign -dv --verbose=4 "$DESTROY_APP" 2>&1 | /usr/bin/grep -F "TeamIdentifier=$APPLE_TEAM_ID"
+codesign -dv --verbose=4 "$DESTROY_APP" 2>&1 | /usr/bin/grep -Fx "TeamIdentifier=$APPLE_TEAM_ID"
 codesign -dv --verbose=4 "$DESTROY_APP" 2>&1 | /usr/bin/grep -E 'flags=.*runtime'
 mkdir -p artifacts
 DESTROY_VERSION="$(python3 -c 'import json; print(json.load(open("apps/desktop/package.json"))["version"])')"

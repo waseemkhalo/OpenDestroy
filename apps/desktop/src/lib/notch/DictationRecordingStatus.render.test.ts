@@ -23,12 +23,15 @@ describe("DictationRecordingStatus", () => {
     expect(body).toContain("dictation-flank--destination");
     expect(body).toContain("Dictating into ChatGPT");
     expect(body).toContain("ChatGPT");
+    expect(body).toContain('dictation-app-name');
     expect(body).toContain('data-native-app-icon="true"');
     expect(body).toContain("data:image/png;base64,c2t5");
   });
 
   it("uses equal flanks around a runtime camera gutter", () => {
-    const css=readFileSync(new URL("../../style.css",import.meta.url),"utf8");
-    expect(css).toContain("grid-template-columns:1fr var(--camera-width,210px) 1fr");
+    const css=readFileSync(new URL("./DictationHud.svelte",import.meta.url),"utf8");
+    expect(css).toContain("grid-template-columns:128px var(--camera-width,200px) 128px");
+    expect(css).toContain("width:calc(var(--camera-width,200px) + 256px)");
+    expect(css).toContain("height:max(46px,var(--camera-height,34px))");
   });
 });

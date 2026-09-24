@@ -8,12 +8,20 @@ mod dictation_stream;
 mod focus;
 mod geometry;
 mod hud;
+mod integrations;
+mod local_models;
+mod native_audio;
 mod panel_bounds;
+mod parakeet;
 mod permissions;
+mod public_setup;
+mod reset_setup;
 use std::sync::{Arc, Mutex};
 use tauri::{Emitter, Manager};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 struct ShortcutConfig(Mutex<String>);
+const DEFAULT_SHORTCUT: &str = "CommandOrControl+Backquote";
+
 fn register(app: &tauri::AppHandle, value: &str) -> Result<(), String> {
     let shortcut: Shortcut = value
         .parse()
@@ -58,6 +66,24 @@ fn set_shortcut(
     }
     std::fs::write(path, value).map_err(|_| "Cannot save shortcut")?;
     Ok(())
+}
+
+pub(crate) fn reset_shortcut(app: &tauri::AppHandle) -> Result<(), String> {
+    let state = app.state::<ShortcutConfig>();
+    let mut current = state.0.lock().map_err(|_| "Shortcut busy")?;
+    DEFAULT_SHORTCUT
+        .parse::<Shortcut>()
+        .map_err(|_| "Default shortcut is invalid")?;
+    if let Ok(old) = current.parse::<Shortcut>() {
+        let _ = app.global_shortcut().unregister(old);
+    }
+    register(app, DEFAULT_SHORTCUT)?;
+    *current = DEFAULT_SHORTCUT.into();
+    let path = app_identity::config_path().with_file_name("shortcut.txt");
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|_| "Cannot create shortcut folder")?;
+    }
+    std::fs::write(path, DEFAULT_SHORTCUT).map_err(|_| "Cannot save default shortcut".into())
 }
 #[tauri::command]
 fn shortcut_status(
@@ -121,6 +147,7 @@ pub fn run() {
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .manage(Arc::new(Mutex::new(Default::default())) as dictation_stream::DictationStreamHandle)
         .manage(dictation::DictationSession::default())
+        .manage(native_audio::NativeAudio::default())
         .manage(panel_bounds::PanelBounds::default())
         .manage(hud::HudState::default())
         .on_window_event(|window, event| {
@@ -146,9 +173,7 @@ pub fn run() {
                 window.state::<panel_bounds::PanelBounds>().flush();
             }
         })
-        .manage(ShortcutConfig(Mutex::new(
-            "CommandOrControl+Backquote".into(),
-        )))
+        .manage(ShortcutConfig(Mutex::new(DEFAULT_SHORTCUT.into())))
         .setup(|app| {
             if app.config().plugins.0.contains_key("updater") {
                 app.handle()
@@ -200,6 +225,29 @@ pub fn run() {
                 auth::backend_api,
                 auth::export_personal_data,
                 auth::destroy_transcribe_dictation,
+                native_audio::native_audio_start,
+                native_audio::native_audio_finish,
+                native_audio::native_audio_cancel,
+                native_audio::native_audio_level,
+                public_setup::public_setup_status,
+                public_setup::public_configure_speech,
+                public_setup::public_download_model,
+                public_setup::public_local_models,
+                public_setup::public_select_local_model,
+                public_setup::public_remove_local_model,
+                public_setup::public_disconnect_speech,
+                reset_setup::public_restart_onboarding,
+                reset_setup::public_reset_local_data,
+                integrations::integration_status,
+                integrations::save_composio_key,
+                integrations::connect_google_drive,
+                integrations::refresh_google_drive,
+                integrations::disconnect_google_drive,
+                integrations::search_google_drive,
+                integrations::save_giphy_key,
+                integrations::search_giphy,
+                integrations::disconnect_giphy,
+                integrations::open_setup_link,
                 dictation::destroy_dictation_begin,
                 dictation::destroy_dictation_target,
                 dictation::destroy_dictation_selected_text,

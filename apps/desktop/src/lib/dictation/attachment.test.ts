@@ -1,9 +1,14 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { invoke } from "@tauri-apps/api/core";
 
 import {
   attachmentKindFor,
+  extractDictationDriveIntent,
   extractDictationAttachmentIntent,
+  searchGoogleDriveLinks,
 } from "./attachment";
+
+vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
 describe("spoken attachment intent", () => {
   it("splits an imperative command from the message", () => {
@@ -102,5 +107,34 @@ describe("spoken attachment intent", () => {
     expect(
       extractDictationAttachmentIntent(`attach my deck ${"x".repeat(200)}`),
     ).toBeNull();
+  });
+
+  it("recognises a Drive lookup with or without transcript punctuation", () => {
+    expect(extractDictationDriveIntent("Find my pitch deck in Google Drive")).toEqual({
+      query: "pitch deck",
+      messageText: "",
+    });
+    expect(extractDictationDriveIntent("Hey Amy, find my pitch deck in Drive")).toEqual({
+      query: "pitch deck",
+      messageText: "Hey Amy",
+    });
+    expect(extractDictationDriveIntent("Hey Amy find my pitch deck in Drive")).toEqual({
+      query: "pitch deck",
+      messageText: "Hey Amy",
+    });
+    expect(
+      extractDictationDriveIntent("Hey Amy, can you find my pitch deck in Drive"),
+    ).toEqual({ query: "pitch deck", messageText: "Hey Amy" });
+  });
+
+  it("keeps Drive lookup bounded and passes only the literal query to native search", async () => {
+    vi.mocked(invoke).mockResolvedValueOnce({ results: [{ name: "Pitch deck", url: "https://drive.google.com/file/d/1" }] });
+    await expect(searchGoogleDriveLinks("pitch deck")).resolves.toEqual([
+      { name: "Pitch deck", url: "https://drive.google.com/file/d/1" },
+    ]);
+    expect(invoke).toHaveBeenCalledWith("search_google_drive", { query: "pitch deck" });
+    vi.mocked(invoke).mockReset();
+    await expect(searchGoogleDriveLinks("x".repeat(81))).resolves.toEqual([]);
+    expect(invoke).not.toHaveBeenCalled();
   });
 });

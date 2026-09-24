@@ -181,6 +181,7 @@ pub fn frontmost_app_identity() -> DictationFocusTarget {
             bundle_id: bundle_id.clone(),
             app_name: app_name.clone(),
             window_title: String::new(),
+            window_identifier: String::new(),
             role: String::new(),
             subrole: String::new(),
             identifier: String::new(),
@@ -351,12 +352,30 @@ fn read_focused_fields_macos() -> Option<FocusFields> {
             application.as_type_ref(),
             focused_element_attr.as_concrete_TypeRef(),
         )?;
-        let window_title = attribute(
+        let focused_window = attribute(
             application.as_type_ref(),
             focused_window_attr.as_concrete_TypeRef(),
-        )
-        .map(|window| string_attribute(window.as_type_ref(), title_attr.as_concrete_TypeRef()))
-        .unwrap_or_default();
+        );
+        let window_title = focused_window
+            .as_ref()
+            .map(|window| string_attribute(window.as_type_ref(), title_attr.as_concrete_TypeRef()))
+            .unwrap_or_default();
+        let window_identifier = focused_window
+            .as_ref()
+            .map(|window| {
+                let identifier =
+                    string_attribute(window.as_type_ref(), identifier_attr.as_concrete_TypeRef());
+                let hash = format!("ax:{:x}", CFHash(window.as_type_ref()));
+                if identifier.is_empty() {
+                    hash
+                } else {
+                    // AXIdentifier is useful context but is not guaranteed to
+                    // be unique across windows. Keep the native proxy hash in
+                    // the identity so same-named windows cannot alias.
+                    format!("{identifier}|{hash}")
+                }
+            })
+            .unwrap_or_default();
         let role = string_attribute(focused.as_type_ref(), role_attr.as_concrete_TypeRef());
         let subrole = string_attribute(focused.as_type_ref(), subrole_attr.as_concrete_TypeRef());
         let value = string_attribute(focused.as_type_ref(), value_attr.as_concrete_TypeRef())
@@ -391,6 +410,7 @@ fn read_focused_fields_macos() -> Option<FocusFields> {
             bundle_id,
             app_name,
             window_title,
+            window_identifier,
             role,
             subrole,
             identifier,
@@ -409,6 +429,10 @@ struct FocusFields {
     bundle_id: String,
     app_name: String,
     window_title: String,
+    /// AX identifier plus the process-local native proxy hash for the focused
+    /// window. The title is only a last-resort identity for test/probe sources
+    /// that cannot expose a native window proxy.
+    window_identifier: String,
     role: String,
     subrole: String,
     identifier: String,
@@ -453,7 +477,8 @@ fn parse_focus_line(line: &str) -> Option<FocusFields> {
     Some(FocusFields {
         bundle_id,
         app_name,
-        window_title,
+        window_title: window_title.clone(),
+        window_identifier: window_title,
         role,
         subrole,
         identifier,
@@ -467,8 +492,9 @@ fn parse_focus_line(line: &str) -> Option<FocusFields> {
 }
 
 /// Privacy-safe, process-local identity for one focused accessibility element.
-/// A stable accessibility identifier wins when the app provides one; geometry
-/// is the fail-closed fallback. Excluding geometry from identified elements is
+/// A native window proxy hash is retained even when the app provides an AX
+/// identifier; geometry is the fail-closed fallback for anonymous fields.
+/// Excluding geometry from identified elements is
 /// important because message boxes often grow after a paste, and correction or
 /// undo must still recognize that exact element. Raw metadata never leaves this
 /// module; only the digest lives for the short correction window.
@@ -477,12 +503,18 @@ fn focus_signature(fields: &FocusFields) -> String {
         return String::new();
     }
     let mut hasher = Sha256::new();
-    for value in [
+    let window_identity = if fields.window_identifier.is_empty() {
+        &fields.window_title
+    } else {
+        &fields.window_identifier
+    };
+    let identity = [
         &fields.bundle_id,
-        &fields.window_title,
+        window_identity,
         &fields.role,
         &fields.subrole,
-    ] {
+    ];
+    for value in identity {
         hasher.update((value.len() as u64).to_be_bytes());
         hasher.update(value.as_bytes());
     }
@@ -658,6 +690,7 @@ mod tests {
             bundle_id: bundle.into(),
             app_name: app.into(),
             window_title: "Inbox".into(),
+            window_identifier: String::new(),
             role: role.into(),
             subrole: String::new(),
             identifier: "focused-editor".into(),
@@ -704,6 +737,7 @@ mod tests {
             bundle_id: "com.google.Chrome".into(),
             app_name: "Google Chrome".into(),
             window_title: "Gmail - Compose".into(),
+            window_identifier: String::new(),
             role: "AXWebArea".into(),
             subrole: String::new(),
             identifier: "page".into(),
@@ -775,6 +809,53 @@ mod tests {
         assert_eq!(result.partial_draft.as_deref(), Some("Hello"));
     }
 
+    #[test]
+    fn reused_field_identifier_does_not_cross_window_titles() {
+        let mut before = sample("com.google.Chrome", "Google Chrome", "AXWebArea", "Draft");
+        before.window_title = "Inbox (1) - Gmail".into();
+        let mut after = before.clone();
+        after.window_title = "Inbox (2) - Gmail".into();
+
+        let left = DictationFocusTarget {
+            can_paste: true,
+            app_name: before.app_name.clone(),
+            bundle_id: before.bundle_id.clone(),
+            app_kind: "gmail".into(),
+            app_icon_data_url: None,
+            focus_signature: focus_signature(&before),
+            selected_text: None,
+        };
+        let right = DictationFocusTarget {
+            focus_signature: focus_signature(&after),
+            ..left.clone()
+        };
+        // AXIdentifier can repeat between windows. Fail closed until a stable
+        // native window identity is captured, even if a title change is benign.
+        assert!(!same_dictation_field(&left, &right));
+    }
+
+    #[test]
+    fn stable_window_identity_distinguishes_same_field_identifier() {
+        let mut first = sample("com.google.Chrome", "Google Chrome", "AXWebArea", "Draft");
+        first.window_title = "Gmail - Inbox".into();
+        first.window_identifier = "compose|ax:window-one".into();
+        let mut second = first.clone();
+        second.window_identifier = "compose|ax:window-two".into();
+
+        assert_ne!(focus_signature(&first), focus_signature(&second));
+    }
+
+    #[test]
+    fn stable_window_hash_allows_benign_title_updates() {
+        let mut before = sample("com.google.Chrome", "Google Chrome", "AXWebArea", "Draft");
+        before.window_title = "Gmail - Inbox".into();
+        before.window_identifier = "compose|ax:same-window".into();
+        let mut after = before.clone();
+        after.window_title = "Gmail - Inbox (1)".into();
+
+        assert_eq!(focus_signature(&before), focus_signature(&after));
+    }
+
     /// The field value is last in the probe line, so draft text containing the
     /// separator cannot shift the flags Destroy makes paste decisions from.
     #[test]
@@ -804,11 +885,12 @@ mod tests {
             app_name: "Mail".into(),
             bundle_id: "com.apple.mail".into(),
             app_kind: "mail".into(),
-            app_icon_data_url: None,
+            app_icon_data_url: Some("data:image/png;base64,icon".into()),
             focus_signature: "not-serialized".into(),
             selected_text: Some("private customer sentence".into()),
         };
         let json = serde_json::to_string(&target).expect("serialize target");
+        assert!(json.contains("data:image/png;base64,icon"));
         assert!(!json.contains("private customer sentence"));
         assert!(!json.contains("selectedText"));
         assert!(!json.contains("not-serialized"));

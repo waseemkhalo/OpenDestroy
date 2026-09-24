@@ -14,23 +14,81 @@ pub fn camera_notch_size(window: &tauri::WebviewWindow) -> Option<(u32, u32)> {
     // showing or collapsing the window on Tauri's application event loop.
     let ns_window = unsafe { &*ptr.cast::<NSWindow>() };
     let screen = ns_window.screen()?;
+    camera_notch_size_for_screen(&screen)
+}
+
+#[cfg(target_os = "macos")]
+#[must_use]
+fn camera_notch_size_for_screen(screen: &objc2_app_kit::NSScreen) -> Option<(u32, u32)> {
     let left = screen.auxiliaryTopLeftArea();
     let right = screen.auxiliaryTopRightArea();
-    if left.size.width <= 0.0 || right.size.width <= 0.0 {
+    notch_geometry_from_auxiliary_areas(
+        left.origin.x,
+        left.size.width,
+        left.size.height,
+        right.origin.x,
+        right.size.width,
+        right.size.height,
+    )
+}
+
+/// Converts AppKit's safe menu-bar rectangles into the physical camera gap.
+/// Kept independent of AppKit so malformed/overlapping display data is tested
+/// without requiring a real notched Mac in CI.
+#[must_use]
+fn notch_geometry_from_auxiliary_areas(
+    left_origin_x: f64,
+    left_width: f64,
+    left_height: f64,
+    right_origin_x: f64,
+    right_width: f64,
+    right_height: f64,
+) -> Option<(u32, u32)> {
+    if [
+        left_origin_x,
+        left_width,
+        left_height,
+        right_origin_x,
+        right_width,
+        right_height,
+    ]
+    .iter()
+    .any(|value| !value.is_finite())
+        || left_width <= 0.0
+        || right_width <= 0.0
+    {
         return None;
     }
 
-    let camera_left = left.origin.x + left.size.width;
-    let width = right.origin.x - camera_left;
-    let height = left.size.height.max(right.size.height);
+    let width = right_origin_x - (left_origin_x + left_width);
+    let height = left_height.max(right_height);
 
     // Reject zero/implausible rectangles (including non-notched external
-    // displays) rather than letting a bad AppKit reading swallow the hit area.
+    // displays) rather than letting bad AppKit data swallow the hit area.
     if !(120.0..=360.0).contains(&width) || !(20.0..=64.0).contains(&height) {
         return None;
     }
 
     Some((width.round() as u32, height.round() as u32))
+}
+
+const CAMERA_FALLBACK_WIDTH: u32 = 200;
+const CAMERA_FALLBACK_HEIGHT: u32 = 34;
+const RECORDING_FLANK_WIDTH: u32 = 128;
+const RECORDING_HUD_HEIGHT: u32 = 46;
+
+#[must_use]
+const fn recording_hud_width(camera_width: u32) -> u32 {
+    camera_width.saturating_add(RECORDING_FLANK_WIDTH * 2)
+}
+
+#[must_use]
+const fn recording_hud_height(camera_height: u32) -> u32 {
+    if camera_height > RECORDING_HUD_HEIGHT {
+        camera_height
+    } else {
+        RECORDING_HUD_HEIGHT
+    }
 }
 
 #[cfg(not(target_os = "macos"))]
@@ -45,7 +103,7 @@ pub fn notch_geometry(app: tauri::AppHandle) -> serde_json::Value {
     let size = app
         .get_webview_window("dictation-hud")
         .and_then(|w| camera_notch_size(&w));
-    let (width, height) = size.unwrap_or((210, 34));
+    let (width, height) = size.unwrap_or((CAMERA_FALLBACK_WIDTH, CAMERA_FALLBACK_HEIGHT));
     serde_json::json!({"width":width,"height":height})
 }
 
@@ -184,21 +242,22 @@ pub fn position_hud(
     .or_else(|| NSScreen::mainScreen(mtm))
     .ok_or("Display unavailable")?;
     let frame = screen.frame();
-    // Move to this display before measuring its camera gutter.
-    if choose_display {
-        native.setFrameOrigin(NSPoint::new(
-            frame.origin.x + frame.size.width / 2.0,
-            frame.origin.y + frame.size.height - 100.0,
-        ));
-    }
-    let (camera_width, camera_height) = camera_notch_size(window).unwrap_or((210, 34));
+    // Resolve the selected display directly. Measuring through the window here
+    // can read the previous display while a multi-monitor HUD is moving.
+    let (camera_width, camera_height) = camera_notch_size_for_screen(&screen)
+        .unwrap_or((CAMERA_FALLBACK_WIDTH, CAMERA_FALLBACK_HEIGHT));
     let recording = matches!(phase, "recording" | "processing");
     let (width, height) = if recording {
-        (f64::from(camera_width) + 128.0, f64::from(camera_height))
+        (
+            f64::from(recording_hud_width(camera_width)),
+            f64::from(recording_hud_height(camera_height)),
+        )
     } else if phase == "picker" {
         (540.0, 440.0)
     } else {
-        (420.0, 152.0)
+        // Room for a readable recovery message, paste shortcut and actions
+        // below the camera gutter. Recording/processing keep their slim notch.
+        (440.0, 240.0)
     };
     native.setLevel(NSMainMenuWindowLevel + 2);
     native.setFrame_display(
@@ -222,7 +281,50 @@ pub fn position_hud(
     window
         .set_size(tauri::LogicalSize::new(540.0, 440.0))
         .map_err(|_| "Cannot size HUD")?;
-    Ok((210, 34))
+    Ok((CAMERA_FALLBACK_WIDTH, CAMERA_FALLBACK_HEIGHT))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        notch_geometry_from_auxiliary_areas, recording_hud_height, recording_hud_width,
+        CAMERA_FALLBACK_HEIGHT, CAMERA_FALLBACK_WIDTH, RECORDING_FLANK_WIDTH, RECORDING_HUD_HEIGHT,
+    };
+
+    #[test]
+    fn derives_camera_gap_from_display_safe_areas() {
+        assert_eq!(
+            notch_geometry_from_auxiliary_areas(0.0, 500.0, 34.0, 700.0, 580.0, 32.0),
+            Some((200, 34))
+        );
+    }
+
+    #[test]
+    fn rejects_invalid_or_non_notched_safe_areas() {
+        assert_eq!(
+            notch_geometry_from_auxiliary_areas(0.0, 500.0, 34.0, 500.0, 580.0, 32.0),
+            None
+        );
+        assert_eq!(
+            notch_geometry_from_auxiliary_areas(0.0, 500.0, 34.0, 100.0, 580.0, 32.0),
+            None
+        );
+        assert_eq!(
+            notch_geometry_from_auxiliary_areas(0.0, 500.0, f64::NAN, 700.0, 580.0, 32.0),
+            None
+        );
+    }
+
+    #[test]
+    fn recording_footprint_keeps_equal_source_derived_flanks() {
+        assert_eq!(RECORDING_FLANK_WIDTH, 128);
+        assert_eq!(recording_hud_width(CAMERA_FALLBACK_WIDTH), 456);
+        assert_eq!(
+            recording_hud_height(CAMERA_FALLBACK_HEIGHT),
+            RECORDING_HUD_HEIGHT
+        );
+        assert_eq!(CAMERA_FALLBACK_HEIGHT, 34);
+    }
 }
 
 #[cfg(target_os = "macos")]

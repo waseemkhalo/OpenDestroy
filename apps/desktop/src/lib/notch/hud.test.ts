@@ -1,9 +1,15 @@
 import { describe, expect, it, vi } from 'vitest';
 import { render } from 'svelte/server';
-import { initialHud, sanitizeHudSnapshot, runOwnedHudAction, currentHudAction } from './hud';
+import {readFileSync} from 'node:fs';
+import { initialHud, sanitizeHudSnapshot, runOwnedHudAction, currentHudAction, deliveryHudFeedback, hudNotice } from './hud';
 import DictationHud from './DictationHud.svelte';
 
 describe('separate dictation presentation', () => {
+  it('keeps the feedback surface as black as the recording notch', () => {
+    const source=readFileSync(new URL('./DictationHud.svelte',import.meta.url),'utf8');
+    expect(source).toContain('.hud{background:#000;');
+    expect(source).not.toContain('background:#141516');
+  });
   it('drops every prior preview field from hidden snapshots while preserving ordering', () => {
     const state = {...initialHud(), revision: 42, visible: false, phase: 'picker' as const, target: {canPaste: true, appName: 'Private app', bundleId: 'private', appKind: 'generic'}, message: 'Private delivery', error: 'Private error', leading: 'Private text', query: 'Private query', links: [{name: 'Private file', url: 'https://private.example'}]};
     expect(sanitizeHudSnapshot(state)).toEqual({...initialHud(), revision: 42});
@@ -56,16 +62,57 @@ describe('separate dictation presentation', () => {
     expect(body.indexOf('dictation-flank--input')).toBeLessThan(body.indexOf('dictation-camera-gutter'));
     expect(body.indexOf('dictation-camera-gutter')).toBeLessThan(body.indexOf('dictation-flank--destination'));
     expect(body).toContain('data-native-app-icon="true"');
-    expect(body).not.toContain('>Notes<');
+    expect(body).toContain('dictation-app-name');
+    expect(body).toContain('>Notes</span>');
     expect(body).not.toContain('Open settings');
     expect(body).not.toContain('<input');
   });
-  it('presents delivery feedback without an editable field and clears hidden content', () => {
-    const state = {...initialHud(), visible: true, message: 'Copied. Press Command-V.'};
+  it('presents confirmed clipboard fallback with a paste shortcut, without an editable field', () => {
+    const state = {...initialHud(), ...deliveryHudFeedback({delivery:'clipboard',reason:'field_changed'},'Notes')};
     const {body} = render(DictationHud, {props: {state}});
-    expect(body).toContain('Copied. Press Command-V.');
+    expect(body).toContain('Copied. Ready to paste.');
+    expect(body).toContain('Couldn’t paste into Notes.');
+    expect(state.message).toBe('Couldn’t paste into Notes.');
+    expect(body).not.toContain('original text field changed');
+    expect(body).toContain('<kbd ');
+    expect(body).toContain('>V</kbd>');
     expect(body).toContain('Open settings');
     expect(body).not.toContain('<input');
     expect(render(DictationHud, {props: {state: {...state, visible: false}}}).body).not.toContain('Copied.');
+  });
+  it('dismisses successful delivery immediately with no success message', () => {
+    const feedback=deliveryHudFeedback({delivery:'inline'},'Notes');
+    expect(feedback).toEqual({visible:false,message:'',needsAccessibility:false,clipboardCopied:false});
+    expect(render(DictationHud,{props:{state:{...initialHud(),...feedback}}}).body).not.toContain('<section');
+    const source=readFileSync(new URL('../../App.svelte',import.meta.url),'utf8');
+    expect(source).toContain('hudVisible=feedback.visible');
+    expect(source).not.toContain('Text inserted.');
+  });
+  it('never claims clipboard success for an unknown delivery result', () => {
+    expect(deliveryHudFeedback({delivery:'failed'}).clipboardCopied).toBe(false);
+    const state={...initialHud(),visible:true,error:'Native pasteboard error',recovery:true};
+    const {body}=render(DictationHud,{props:{state}});
+    expect(body).toContain('Copy text');
+    expect(body).not.toContain('Ready to paste');
+    expect(body).not.toContain('Native pasteboard error');
+  });
+  it('gives plain-language microphone and provider errors without exposing raw internals', () => {
+    expect(hudNotice({...initialHud(),error:'No speech was recognized.'}).title).toBe('We couldn’t hear you.');
+    expect(hudNotice({...initialHud(),error:'Microphone permission denied'}).detail).toContain('Allow microphone access');
+    expect(hudNotice({...initialHud(),error:'network fetch failed: private URL'}).title).toBe('Couldn’t reach your speech service.');
+    expect(hudNotice({...initialHud(),error:'unclassified internal failure'}).detail).not.toContain('internal');
+  });
+  it('keeps processing in the notch until delivery completes', () => {
+    const {body}=render(DictationHud,{props:{state:{...initialHud(),visible:true,phase:'processing'}}});
+    expect(body).toContain('Processing dictation');
+    expect(body).toContain('data-processing="true"');
+    expect(body).not.toContain('Open settings');
+  });
+  it('uses the brand red for both waveform and spinner', () => {
+    const source=readFileSync(new URL('./DictationRecordingStatus.svelte',import.meta.url),'utf8');
+    const hud=readFileSync(new URL('./DictationHud.svelte',import.meta.url),'utf8');
+    expect(source).toContain('background: #e25345');
+    expect(source).toContain('border-top-color: #e25345');
+    expect(source+hud).not.toContain('#5b9dff');
   });
 });

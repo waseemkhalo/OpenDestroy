@@ -1,3 +1,6 @@
+import { invoke as invokeNative } from "@tauri-apps/api/core";
+import { invokeAccount as invoke } from "../account";
+
 /**
  * Spoken attachment references — "attach my pitch deck", "see attached demo video".
  *
@@ -33,6 +36,53 @@ export type DictationAttachmentIntent = {
    */
   messageText: string;
 };
+
+export type DictationDriveIntent = { query: string; messageText: string };
+
+export type DictationSavedFileLink = {
+  name: string;
+  url: string;
+  keywords?: string | string[];
+};
+
+/** Search the user's saved links through the active account route. */
+export async function searchSavedFileLinks(query: string): Promise<DictationSavedFileLink[]> {
+  const value = query.trim();
+  if (!value || [...value].length > 80) return [];
+  const response = await invoke<{ results?: DictationSavedFileLink[] }>("backend_api", {
+    method: "POST",
+    path: "/v1/links/search",
+    body: { query: value },
+  });
+  return response.results ?? [];
+}
+
+/** Drive is deliberately opt-in: only a spoken "in Drive" request can leave
+ * the saved-link route and call the native Composio worker. */
+const DRIVE_VERB = "(?:find|locate|search\\s+for|look\\s+up)";
+const DRIVE_SEARCH = new RegExp(
+  `^(?:(?<leading>.+?)[.,!?;:]?\\s+)?(?:please\\s+)?${DRIVE_VERB}\\s+(?<query>.+?)\\s+(?:in|on)\\s+(?:my\\s+|the\\s+)?(?:google\\s+)?drive[.!?]*$`,
+  "iu",
+);
+
+export function extractDictationDriveIntent(transcript: string): DictationDriveIntent | null {
+  const match = DRIVE_SEARCH.exec(transcript.trim());
+  if (!match?.groups) return null;
+  const query = cleanQuery(match.groups.query ?? "");
+  if (!query || [...query].length > 80) return null;
+  return { query, messageText: stripRequestScaffolding(match.groups.leading ?? "") };
+}
+
+/** Search an existing Drive link; file bytes never cross this boundary. */
+export async function searchGoogleDriveLinks(query: string): Promise<DictationSavedFileLink[]> {
+  const value = query.trim();
+  if (!value || [...value].length > 80) return [];
+  const response = await invokeNative<{ results?: DictationSavedFileLink[] }>(
+    "search_google_drive",
+    { query: value },
+  );
+  return response.results ?? [];
+}
 
 type NounRule = { kind: DictationAttachmentKind; terms: string[] };
 

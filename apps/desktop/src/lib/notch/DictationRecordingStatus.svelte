@@ -60,6 +60,7 @@
       <AppWindow size={14} strokeWidth={1.8} />
     {/if}
   </span>
+  <span class="dictation-app-name">{target?.appName || "Detecting…"}</span>
   {#if needsAccessibility}
     <span class="dictation-permission-warning" aria-label="Accessibility required for direct paste">
       <ShieldAlert size={13} strokeWidth={1.8} aria-hidden="true" />
@@ -91,7 +92,7 @@
   }
   .dictation-indicator {
     position: relative;
-    width: 45px;
+    width: 29px;
     height: 20px;
     flex-shrink: 0;
   }
@@ -107,7 +108,7 @@
     width: 3px;
     height: 100%;
     border-radius: 999px;
-    background: var(--destroy-text);
+    background: #e25345;
     transform-origin: center;
     animation: wave 0.9s ease-in-out infinite;
     animation-delay: calc(var(--i) * -0.18s);
@@ -120,9 +121,9 @@
     height: 14px;
     margin: -7px 0 0 -7px;
     box-sizing: border-box;
-    border: 2px solid color-mix(in srgb, var(--destroy-blue) 24%, transparent);
-    border-top-color: var(--destroy-blue);
-    border-right-color: var(--destroy-blue);
+    border: 2px solid color-mix(in srgb, #e25345 24%, transparent);
+    border-top-color: #e25345;
+    border-right-color: #e25345;
     border-radius: 50%;
     opacity: 0;
     transform: scale(0.72) rotate(0deg);
@@ -154,6 +155,16 @@
     width: 100%;
     height: 100%;
     object-fit: contain;
+  }
+  .dictation-app-name {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--destroy-text);
+    font-size: 11px;
+    font-weight: 580;
+    line-height: 1;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .dictation-permission-warning {
     display: inline-flex;

@@ -53,5 +53,30 @@ class ReleaseTests(unittest.TestCase):
                 self.assertNotEqual(result.returncode, 0)
                 self.assertFalse(output.exists())
 
+    def test_download_verifier_rejects_untrusted_metadata_before_fetch(self):
+        script = ROOT / 'scripts/verify-downloads.py'
+        with tempfile.TemporaryDirectory() as folder:
+            metadata = Path(folder) / 'release.json'
+            metadata.write_text(json.dumps({
+                'available': True,
+                'version': '0.1.0',
+                'downloads': [{
+                    'url': 'http://example.invalid/releases/download/v0.1.0/app.dmg',
+                    'bytes': 1,
+                    'sha256': '0' * 64,
+                }],
+            }))
+            result = subprocess.run([sys.executable, str(script), str(metadata)], capture_output=True)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn(b'credential-free GitHub HTTPS release URL', result.stderr)
+
+    def test_download_verifier_accepts_honestly_unavailable_metadata(self):
+        script = ROOT / 'scripts/verify-downloads.py'
+        with tempfile.TemporaryDirectory() as folder:
+            metadata = Path(folder) / 'release.json'
+            metadata.write_text(json.dumps({'available': False, 'version': '0.1.0', 'downloads': []}))
+            result = subprocess.run([sys.executable, str(script), str(metadata)], capture_output=True)
+            self.assertEqual(result.returncode, 0)
+
 if __name__ == '__main__':
     unittest.main()

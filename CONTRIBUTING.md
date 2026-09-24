@@ -2,6 +2,8 @@
 
 Keep changes focused on dictation, media selection, saved file links, accessibility, reliability and the community setup. Describe the user-visible behavior, the exact checks you ran, and any hardware or provider checks still pending.
 
+For the source-preview publication gates and the remaining open-source launch blockers, see [Launch readiness](docs/LAUNCH_READINESS.md). No source preview or installer is release-ready until the owner approves the exact candidate and the documented hardware, provider, ownership and installation gates are complete.
+
 ## Local checks
 
 ```sh

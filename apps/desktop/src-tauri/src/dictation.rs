@@ -7,10 +7,10 @@
 //! hold and forgets it immediately after delivery or cancellation.
 //!
 //! Latency shapes the design. Identity comes from `NSWorkspace` and is instant,
-//! so recording starts the moment the key goes down. The accessibility probe
-//! that decides whether the focused field accepts a paste runs through native
-//! Accessibility on a worker thread while the user is still speaking and is
-//! collected at delivery, by which point it has long since finished.
+//! so recording starts as soon as the original app/field target is captured.
+//! The native Accessibility probe is deliberately completed in that shortcut
+//! callback: exact target identity must exist before any HUD/window work can
+//! race it. Delivery performs a fresh probe and accepts only the same target.
 
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
@@ -46,6 +46,55 @@ fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
+
+/// Development-only, bounded lifecycle breadcrumbs. Never accepts customer
+/// content, target metadata or session IDs. The file is created exclusively and
+/// subsequent writes use the same handle, so a symlink cannot redirect them.
+#[cfg(all(debug_assertions, not(test)))]
+fn session_trace(event: &'static str, caller: u32) {
+    use std::collections::VecDeque;
+    use std::io::{Seek, SeekFrom, Write};
+    use std::sync::OnceLock;
+    struct Trace {
+        file: Option<std::fs::File>,
+        events: VecDeque<String>,
+        sequence: u64,
+    }
+    static TRACE: OnceLock<Mutex<Trace>> = OnceLock::new();
+    let mut trace = lock(TRACE.get_or_init(|| {
+        let path = std::env::temp_dir().join(format!("destroy-session-{}.log", std::process::id()));
+        let mut options = std::fs::OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        Mutex::new(Trace {
+            file: options.open(path).ok(),
+            events: VecDeque::new(),
+            sequence: 0,
+        })
+    }));
+    trace.sequence += 1;
+    let sequence = trace.sequence;
+    if trace.events.len() == 64 {
+        trace.events.pop_front();
+    }
+    trace
+        .events
+        .push_back(format!("{sequence} {event} line={caller}\n"));
+    let content: String = trace.events.iter().map(String::as_str).collect();
+    if let Some(file) = &mut trace.file {
+        let _ = file.seek(SeekFrom::Start(0));
+        let _ = file.write_all(content.as_bytes());
+        let _ = file.set_len(content.len() as u64);
+        let _ = file.flush();
+    }
+}
+
+#[cfg(any(not(debug_assertions), test))]
+fn session_trace(_event: &'static str, _caller: u32) {}
 
 fn voice_note_directory() -> std::path::PathBuf {
     std::env::temp_dir().join(VOICE_NOTE_DIR)
@@ -177,9 +226,9 @@ pub struct DictationSession {
 #[derive(Clone)]
 struct ActiveDictation {
     id: String,
-    /// Identity of the app focused when the key went down.
+    /// Exact app/AX target captured before Destroy changes its own windows.
     started: DictationFocusTarget,
-    /// Accessibility probe for that same moment, resolved asynchronously.
+    /// Accessibility target captured in the same shortcut callback as `started`.
     probe: Arc<TargetSlot>,
 }
 
@@ -209,24 +258,23 @@ impl DictationSession {
     pub(crate) fn capture_target(&self) -> DictationStart {
         let identity = frontmost_app_identity();
         let needs_accessibility = !crate::permissions::accessibility_granted();
+        let captured = if needs_accessibility {
+            identity.clone()
+        } else {
+            captured_target(&identity, probe_dictation_target())
+        };
         let slot = Arc::new(TargetSlot::default());
+        slot.publish(captured.clone());
         let session_id = uuid::Uuid::new_v4().to_string();
         *lock(&self.active) = Some(ActiveDictation {
             id: session_id.clone(),
-            started: identity.clone(),
+            started: captured.clone(),
             probe: Arc::clone(&slot),
         });
-        if needs_accessibility {
-            // NSWorkspace identity is enough to render the destination and
-            // detect an app switch. Avoid spawning a doomed AX/AppleScript
-            // probe—and a 1.2s wait—until the user grants Accessibility.
-            slot.publish(identity.clone());
-        } else {
-            std::thread::spawn(move || slot.publish(probe_dictation_target()));
-        }
+        session_trace("capture", line!());
         DictationStart {
             session_id,
-            target: identity,
+            target: captured,
             needs_accessibility,
         }
     }
@@ -235,6 +283,7 @@ impl DictationSession {
     /// starts still work by capturing here as a fallback.
     pub(crate) fn current_or_capture_target(&self) -> DictationStart {
         if let Some(active) = lock(&self.active).clone() {
+            session_trace("reuse", line!());
             return DictationStart {
                 session_id: active.id,
                 target: active.started,
@@ -244,8 +293,21 @@ impl DictationSession {
         self.capture_target()
     }
 
+    pub(crate) fn is_active(&self, session_id: &str) -> bool {
+        self.active(session_id).is_some()
+    }
+
     fn active(&self, session_id: &str) -> Option<ActiveDictation> {
-        lock(&self.active)
+        let current = lock(&self.active);
+        if current.is_none() {
+            session_trace("lookup-missing", line!());
+        } else if current
+            .as_ref()
+            .is_some_and(|active| active.id != session_id)
+        {
+            session_trace("lookup-mismatched", line!());
+        }
+        current
             .as_ref()
             .filter(|active| active.id == session_id)
             .cloned()
@@ -253,20 +315,25 @@ impl DictationSession {
 
     /// Atomically claims the matching session immediately before a native
     /// mutation. A cancellation or newer hold makes the old session unusable.
+    #[track_caller]
     fn take_active(&self, session_id: &str) -> Option<ActiveDictation> {
         let mut active = lock(&self.active);
         if active.as_ref().is_some_and(|entry| entry.id == session_id) {
+            session_trace("claim", std::panic::Location::caller().line());
             active.take()
         } else {
+            session_trace("claim-rejected", std::panic::Location::caller().line());
             None
         }
     }
 
     fn cancel(&self, session_id: &str) -> bool {
+        session_trace("cancel-request", line!());
         self.take_active(session_id).is_some()
     }
 
     pub(crate) fn purge_sensitive_state(&self) {
+        session_trace("account-reset", line!());
         *lock(&self.active) = None;
         *lock(&self.last_inline) = None;
     }
@@ -306,6 +373,26 @@ impl Default for DictationSession {
     }
 }
 
+/// Combines the immediate app identity with the AX probe captured in the same
+/// shortcut callback. A probe from another app is never allowed to become the
+/// target, even if the user switched focus during the probe.
+fn captured_target(
+    identity: &DictationFocusTarget,
+    probed: DictationFocusTarget,
+) -> DictationFocusTarget {
+    if !identity.bundle_id.is_empty()
+        && probed.bundle_id == identity.bundle_id
+        && !probed.focus_signature.is_empty()
+    {
+        DictationFocusTarget {
+            app_icon_data_url: identity.app_icon_data_url.clone(),
+            ..probed
+        }
+    } else {
+        identity.clone()
+    }
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DictationDelivery {
@@ -314,11 +401,11 @@ pub struct DictationDelivery {
     pub app_kind: String,
 }
 
-/// Captures the dictation target and returns immediately.
+/// Captures the dictation target before the HUD can change app/window state.
 ///
-/// The returned identity is enough to show the target icon; `can_paste` is
-/// still `false` here and is resolved by [`destroy_dictation_target`] or at
-/// delivery.
+/// When Accessibility is available, the returned target includes the exact
+/// focused AX field and its window identity. Without it, only the safe app
+/// identity is returned and delivery reports the permission fallback.
 #[tauri::command]
 #[allow(clippy::needless_pass_by_value)]
 pub fn destroy_dictation_begin(state: State<'_, DictationSession>) -> DictationStart {
@@ -374,8 +461,29 @@ pub fn destroy_dictation_previous_text(
 
 #[tauri::command]
 #[allow(clippy::needless_pass_by_value)]
-pub fn destroy_dictation_cancel(state: State<'_, DictationSession>, session_id: String) -> bool {
-    state.cancel(&session_id)
+pub fn destroy_dictation_cancel(
+    app: tauri::AppHandle,
+    state: State<'_, DictationSession>,
+    session_id: String,
+    reason: Option<String>,
+) -> bool {
+    // Only fixed codes reach the development trace, never arbitrary IPC text.
+    session_trace(
+        match reason.as_deref() {
+            Some("no-account") => "cancel-no-account",
+            Some("capture-start-error") => "cancel-capture-start-error",
+            Some("processing-error") => "cancel-processing-error",
+            Some("dispose") => "cancel-dispose",
+            Some("user") => "cancel-user",
+            _ => "cancel-unspecified",
+        },
+        line!(),
+    );
+    let cancelled = state.cancel(&session_id);
+    use tauri::Manager;
+    app.state::<crate::native_audio::NativeAudio>()
+        .cancel(&session_id);
+    cancelled
 }
 
 /// Places dashboard Quick Copy text on the system clipboard.
@@ -1036,7 +1144,8 @@ impl DeliveryPlan {
 #[cfg(test)]
 mod tests {
     use super::{
-        ActiveDictation, DeliveryPlan, DictationSession, InlineInsertion, TargetSlot, UNDO_WINDOW,
+        captured_target, ActiveDictation, DeliveryPlan, DictationSession, InlineInsertion,
+        TargetSlot, UNDO_WINDOW,
     };
     use crate::focus::DictationFocusTarget;
     use std::sync::Arc;
@@ -1052,6 +1161,31 @@ mod tests {
             focus_signature: format!("{bundle}:field"),
             selected_text: None,
         }
+    }
+
+    #[test]
+    fn initial_ax_probe_becomes_the_exact_target_before_hud_work() {
+        let mut identity = target("com.apple.TextEdit", "generic", false);
+        identity.app_icon_data_url = Some("data:image/png;base64,icon".into());
+        let probed = target("com.apple.TextEdit", "editor", true);
+        let captured = captured_target(&identity, probed.clone());
+
+        assert_eq!(captured.focus_signature, probed.focus_signature);
+        assert!(captured.can_paste);
+        assert_eq!(captured.app_kind, "editor");
+        assert_eq!(
+            captured.app_icon_data_url.as_deref(),
+            Some("data:image/png;base64,icon")
+        );
+    }
+
+    #[test]
+    fn probe_from_a_changed_app_is_rejected_as_the_original_target() {
+        let identity = target("com.apple.TextEdit", "editor", false);
+        let probed = target("com.apple.Notes", "generic", true);
+        let captured = captured_target(&identity, probed);
+
+        assert_eq!(captured, identity);
     }
 
     #[test]
