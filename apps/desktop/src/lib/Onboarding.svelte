@@ -123,7 +123,6 @@
   const statusText = $derived(
     speech.error || (speech.provider === "local" && speech.modelDownloading ? "Downloading the local model…" : speech.ready && (speech.provider !== "local" || speech.modelReady) ? "Ready." : "Not configured yet.")
   );
-  const eyebrow = $derived(advancedOpen ? "Advanced connection" : `Step ${step + 1} of ${steps.length}`);
   function nativeOnly() { if (!native) onNativeOnly(); }
   function continueStep() { onContinue(); }
 </script>
@@ -149,7 +148,6 @@
     <div class="setup-shell">
       <div class="setup-content">
         <button class="back-link" type="button" onclick={() => advancedOpen = false}>← Back to speech options</button>
-        <p class="eyebrow">{eyebrow}</p>
         <h1>Use an existing backend.</h1>
         <p class="lede">Keep the relay and provider configuration you already run.</p>
         <form class="panel" onsubmit={(event) => { event.preventDefault(); onConnectBackend(); }}>
@@ -163,7 +161,6 @@
   {:else if step === 0}
     <div class="setup-shell">
       <div class="setup-content">
-        <p class="eyebrow">{eyebrow}</p>
         <h1>How would you like to dictate?</h1>
         <p class="lede">Choose where your speech is processed. You can change this anytime in Settings.</p>
         <div class="choice-grid" role="listbox" aria-label="Speech provider">
@@ -193,7 +190,6 @@
   {:else if step === 1}
     <div class="setup-shell">
       <div class="setup-content">
-        <p class="eyebrow">{eyebrow}</p>
         <h1>Make this Mac ready.</h1>
         <p class="lede">Speak into the field you’re already using.</p>
         <div class="panel permission-list">
@@ -208,7 +204,6 @@
   {:else}
     <div class="setup-shell">
       <div class="setup-content">
-        <p class="eyebrow">{eyebrow}</p>
         <h1>What else would you like to insert?</h1>
         <p class="lede">Optional connections. Add them now or anytime in Settings.</p>
         <div class="choice-grid integrations" role="listbox" aria-label="Optional integrations">
@@ -246,7 +241,6 @@
 
   .setup-shell{max-width:660px;min-height:0;display:flex;flex-direction:column;flex:1;animation:page-settle 340ms cubic-bezier(.22,1,.36,1) both}
   .setup-content{min-height:0;overflow:auto;display:flex;flex-direction:column;flex:1;padding:clamp(8px,3vh,32px) 4px 24px 0;scrollbar-width:thin;mask-image:linear-gradient(180deg,#000 calc(100% - 28px),transparent);-webkit-mask-image:linear-gradient(180deg,#000 calc(100% - 28px),transparent)}
-  .eyebrow{margin:0 0 12px;font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:#d94c40}
   .onboarding h1{font:500 clamp(38px,5vw,64px)/1.04 DestroyEditorial,Georgia,serif;letter-spacing:-.02em;margin:0 0 14px;color:#f1eee7;text-wrap:balance}
   .onboarding .lede{max-width:520px;margin:0 0 28px;font-size:16px;line-height:1.55;color:#b6b5b0}
   .onboarding h2{font:500 24px/1.2 DestroyEditorial,Georgia,serif;margin:0 0 8px;color:#f1eee7}
@@ -256,7 +250,6 @@
   .choice-card:hover{background:linear-gradient(160deg,#1d1d1de8,#0e0e0ee8);border-color:#ffffff33;transform:translateY(-1px)}
   .choice-card.selected{color:#f1eee7;border-color:#d94c40a6;background:linear-gradient(160deg,#2a1714ee,#0f0b0aee);box-shadow:0 0 0 1px #d94c4033,0 18px 40px #000a}
   .choice-card strong{position:relative;font:500 25px/1.1 DestroyEditorial,Georgia,serif;margin:18px 0 8px;color:#f1eee7}
-  .choice-card.selected strong::after{content:'';position:absolute;left:-2px;right:-2px;bottom:-6px;height:7px;background:url('/art/selection-brush.png') center / 100% auto no-repeat;mix-blend-mode:lighten;mask-image:radial-gradient(ellipse at center,#000 35%,transparent 70%);-webkit-mask-image:radial-gradient(ellipse at center,#000 35%,transparent 70%)}
   .choice-card small{font-size:12px;line-height:1.5;color:#9d9d97}
 
   .panel{padding:4px 20px 16px;background:#0d0d0dd9;border:1px solid #ffffff12;border-radius:16px;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
