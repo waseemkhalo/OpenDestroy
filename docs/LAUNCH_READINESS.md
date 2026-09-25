@@ -28,11 +28,15 @@ Last checked: 2026-09-19, on the public checkout, with the existing dirty worktr
 
 #### P0 — owner candidate approval and provenance
 
+**Update 2026-09-25:** The owner (waseemkhalo) states they own the extracted ("Sky-derived") source and approve publishing it under MIT. They also state they generated the Daily Ink artwork. Third-party app and provider logos are kept as marks used only to show compatibility. The owner must still approve the exact commit before making the repository public. The Cormorant font license text is still not in `third_party/licenses`. The paragraph below is the 2026-09-19 assessment.
+
 Blocked. The public history records extraction commits for the standalone desktop/backend slice, but it does not provide a per-file origin and permission ledger for Sky-derived code. The factual model/license inventory and dependency notices are now documented, but they are not owner provenance or redistribution clearance. Creator/source and redistribution rights for the remaining icon and artwork are still unverified. Cormorant font claims and generated-art notes need retained source/license evidence, not just file presence. The newly approved `settings-landscape-v2.png` is recorded as built-in ImageGen output from an owner-supplied approved mock reference; this is not a third-party borrowed image, but the owner should retain that approval record outside the public repository.
 
 Before publishing a source candidate, the owner must approve the concrete candidate and an exact-commit ledger covering every extracted or contributed file, including source/permission records, upstream license, required attribution, and files excluded from the candidate. This pass does not infer permissions or license clearance from file presence or this repository's `LICENSE`.
 
 #### P0 — reviewed publication scope
+
+**Update 2026-09-25:** Resolved. `python3 scripts/audit-public.py` passes after the owner approved the 25 binary assets recorded in `docs/PUBLICATION_REVIEW.md`. The paragraph below is the earlier snapshot.
 
 `python3 scripts/audit-public.py` currently fails on four history findings: `apps/desktop/src/lib/dictation/savedLink.ts` and `savedLink.test.ts`, each appearing across two reachable commits. Recommended resolution: owner-review these exact source files and, if approved for the public candidate, restore only these two exact paths to `scripts/public-files.json`. This changes neither history nor audit behavior; the audit will continue scanning file contents and reachable history. If they are not approved, keep source publication blocked rather than hiding the findings. Do not rewrite history or broaden the allowlist blindly.
 
