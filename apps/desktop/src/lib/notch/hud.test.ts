@@ -102,6 +102,14 @@ describe('separate dictation presentation', () => {
     expect(hudNotice({...initialHud(),error:'network fetch failed: private URL'}).title).toBe('Couldn’t reach your speech service.');
     expect(hudNotice({...initialHud(),error:'unclassified internal failure'}).detail).not.toContain('internal');
   });
+  it('shows the picker’s own guidance when GIF search fails', () => {
+    const missing = hudNotice({...initialHud(),mediaOpen:true,error:'Add your GIPHY key in Settings → Connections to search GIFs and stickers.'});
+    expect(missing.title).toBe('GIF picker needs attention.');
+    expect(missing.detail).toContain('GIPHY key');
+    expect(hudNotice({...initialHud(),mediaOpen:true,error:'GIPHY rejected the API key. Check it in Settings → Connections.'}).detail).toContain('rejected');
+    expect(hudNotice({...initialHud(),mediaOpen:true,error:'No speech was recognized.'}).title).toBe('We couldn’t hear you.');
+    expect(hudNotice({...initialHud(),error:'unclassified internal failure'}).detail).not.toContain('internal');
+  });
   it('gives live microphone failures actionable input-device recovery guidance', () => {
     const notice = hudNotice({...initialHud(),error:'No audio is arriving from the microphone. Check macOS Microphone permission and your selected input device, then try again.'});
     expect(notice.title).toBe('We couldn’t hear your microphone.');

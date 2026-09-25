@@ -136,7 +136,7 @@
    else if(action.action==='kind'&&action.kind)await changeKind(action.kind);
   }catch(e){if(current())fail(e);}
  }
- async function boundary(){connectionRevision++;setAccount(null);connectedServer='';user=null;target=null;needsAccessibility=false;error='';vars='{}';linksJson='[]';favorites=[];token='';deleteConfirm=false;remoteDeleteConfirm=false;giphyDirect=false;stopMicTest();clearDictationMemory();resetDictationComposerCache();await cancel();}
+ async function boundary(){connectionRevision++;setAccount(null);connectedServer='';user=null;target=null;needsAccessibility=false;error='';vars='{}';linksJson='[]';favorites=[];token='';deleteConfirm=false;remoteDeleteConfirm=false;giphyDirect=false;stopMicTest();clearDictationMemory();resetDictationComposerCache();await cancel();await refreshIntegrations();}
  function nativeOnly(){message='This is a browser preview. Native setup is available in the macOS app.';}
  function applySpeechStatus(next:SpeechStatus){speech=next;if(next.provider)selectedProvider=next.provider;if(next.user_id&&next.ready){user=next.user_id;connectedServer=next.backend_url||localBackend;setAccount(user,connectedServer);giphyDirect=integrations.giphyKeyPresent;}else if(!next.provider){user=null;connectedServer='';setAccount(null);}if(next.error)error=next.error;}
  async function refreshPublicStatus(){
@@ -272,9 +272,11 @@
  const gen=generation,request=++mediaRequest,wanted=(page+1)*3;busy=true;error='';
  const current=()=>gen===generation&&request===mediaRequest;
  try{
+  if(!giphyDirect&&native){await refreshIntegrations();if(!current())return;}
   if(giphyDirect){
    const result=await searchDirectGiphy(query,kind,page*3);if(!current())return;media=result.results.slice(0,3);mediaPool=[];mediaInitialized=true;mediaEnded=result.results.length<3;return;
   }
+  if(speech.provider!=='backend')throw new Error('Add your GIPHY key in Settings → Connections to search GIFs and stickers.');
   if(!mediaInitialized){
    if(!await refreshDictationMediaAvailability())throw new Error('Media is unavailable. The backend operator must configure an approved GIPHY integration.');
    if(!current())return;

@@ -41,6 +41,8 @@ export function hudNotice(state: HudSnapshot): {title: string; detail: string; i
   if (/microphone|audio input|recording channels|audioqueue/.test(error)) {
     return {title: 'Your microphone needs attention.', detail: /permission|access|denied/.test(error) ? 'Allow microphone access in macOS Settings, then try again.' : 'Check your input device in Settings, then try again.', icon: 'microphone'};
   }
+  // Picker errors are the app's own guidance (missing key, rejected key, no match), so show them.
+  if (state.error && state.mediaOpen) return {title: 'GIF picker needs attention.', detail: state.error, icon: 'warning'};
   if (state.recovery) return {title: 'Your words aren’t lost.', detail: 'We couldn’t finish inserting them. Copy your text below, then paste it where you need it.', icon: 'clipboard'};
   if (/network|connection|timeout|timed out|fetch/.test(error)) return {title: 'Couldn’t reach your speech service.', detail: 'Check your connection and try again. Nothing was pasted.', icon: 'warning'};
   if (state.error) return {title: 'Dictation didn’t finish.', detail: 'Try your shortcut again. If this keeps happening, check your speech setup in Settings.', icon: 'warning'};
