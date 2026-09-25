@@ -74,6 +74,9 @@ The lockfiles include development, optional and cross-platform packages. Review 
         text += '\n'.join('- '+item for item in sorted(set(missing)))+'\n' if missing else 'None found missing in the resolved local dependency inventory.\n'
         (ROOT/'THIRD_PARTY_NOTICES.md').write_text(text)
         if old.exists():
+            # Bundled assets (fonts, artwork) are not in any lockfile; keep their reviewed notices.
+            for kept in old.glob('asset-*'):
+                shutil.copytree(kept, output / kept.name)
             shutil.rmtree(old)
         old.parent.mkdir(exist_ok=True)
         shutil.copytree(output, old)
