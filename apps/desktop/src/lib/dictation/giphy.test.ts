@@ -87,6 +87,12 @@ describe("extractDictationMediaIntent", () => {
     });
   });
 
+  it("accepts common speech-model spellings of gif", () => {
+    expect(extractDictationMediaIntent("Add a laughing giff")).toMatchObject({ kind: "gif", query: "laughing" });
+    expect(extractDictationMediaIntent("Send me a jiff of a cat")).toMatchObject({ kind: "gif", query: "a cat" });
+    expect(extractDictationMediaIntent("I bought her a gift")).toBeNull();
+  });
+
   it("does not intercept ordinary speech that mentions GIFs", () => {
     expect(extractDictationMediaIntent("People communicate with GIFs all the time.")).toBeNull();
   });
