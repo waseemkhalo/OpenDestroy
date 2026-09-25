@@ -87,6 +87,29 @@ describe("extractDictationMediaIntent", () => {
     });
   });
 
+  it("accepts a short verbless request as the whole utterance", () => {
+    expect(extractDictationMediaIntent("Laughing GIF.")).toMatchObject({ kind: "gif", query: "Laughing", leadingText: "" });
+    expect(extractDictationMediaIntent("funny cat gif")).toMatchObject({ kind: "gif", query: "funny cat" });
+    expect(extractDictationMediaIntent("A thumbs up sticker")).toMatchObject({ kind: "sticker", query: "thumbs up" });
+    expect(extractDictationMediaIntent("apple gif")).toMatchObject({ query: "apple" });
+  });
+
+  it("keeps short sentences about GIFs as dictation", () => {
+    expect(extractDictationMediaIntent("I love GIFs.")).toBeNull();
+    expect(extractDictationMediaIntent("We need more stickers")).toBeNull();
+    expect(extractDictationMediaIntent("That was a great sticker")).toBeNull();
+    expect(extractDictationMediaIntent("Thanks for the nice gift")).toBeNull();
+  });
+
+  it("accepts more verbs and punctuation after the media word", () => {
+    expect(extractDictationMediaIntent("Get me a laughing gif")).toMatchObject({ kind: "gif", query: "laughing" });
+    expect(extractDictationMediaIntent("Grab a GIF of a dancing cat")).toMatchObject({ query: "a dancing cat" });
+    expect(extractDictationMediaIntent("Search for a gif of applause")).toMatchObject({ query: "applause" });
+    expect(extractDictationMediaIntent("Reply with a thumbs up sticker")).toMatchObject({ kind: "sticker", query: "thumbs up" });
+    expect(extractDictationMediaIntent("Add a GIF, laughing.")).toMatchObject({ kind: "gif", query: "laughing" });
+    expect(extractDictationMediaIntent("GIF: happy dance")).toMatchObject({ kind: "gif", query: "happy dance" });
+  });
+
   it("accepts common speech-model spellings of gif", () => {
     expect(extractDictationMediaIntent("Add a laughing giff")).toMatchObject({ kind: "gif", query: "laughing" });
     expect(extractDictationMediaIntent("Send me a jiff of a cat")).toMatchObject({ kind: "gif", query: "a cat" });

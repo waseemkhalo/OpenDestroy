@@ -21,7 +21,7 @@
         "transparent": true,
         "titleBarStyle": "Overlay",
         "hiddenTitle": true,
-        "alwaysOnTop": true,
+        "alwaysOnTop": false,
         "resizable": true,
         "focus": false,
         "shadow": false,
