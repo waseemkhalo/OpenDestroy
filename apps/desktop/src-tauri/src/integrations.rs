@@ -825,6 +825,15 @@ pub fn disconnect_giphy() -> Result<IntegrationStatus, String> {
     local_status()
 }
 
+/// Names the fix for the GIPHY failures a user can act on; the key itself is never echoed.
+fn giphy_rejection(status: u16) -> String {
+    match status {
+        401 | 403 => "GIPHY rejected the API key. Check it in Settings → Connections.".to_string(),
+        429 => "GIPHY's rate limit was reached. Try again in a few minutes.".to_string(),
+        _ => format!("GIPHY search was not accepted (HTTP {status})"),
+    }
+}
+
 #[tauri::command]
 pub async fn search_giphy(
     query: String,
@@ -859,7 +868,7 @@ pub async fn search_giphy(
     let status = response.status();
     let bytes = bounded_body(response).await?;
     if !status.is_success() {
-        return Err("GIPHY search was not accepted".to_string());
+        return Err(giphy_rejection(status.as_u16()));
     }
     let value: Value = serde_json::from_slice(&bytes)
         .map_err(|_| "GIPHY returned an invalid response".to_string())?;
@@ -888,6 +897,17 @@ pub fn open_setup_link(destination: String) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn giphy_rejections_name_the_fix() {
+        assert!(giphy_rejection(401).contains("rejected the API key"));
+        assert!(giphy_rejection(403).contains("rejected the API key"));
+        assert!(giphy_rejection(429).contains("rate limit"));
+        assert_eq!(
+            giphy_rejection(500),
+            "GIPHY search was not accepted (HTTP 500)"
+        );
+    }
 
     #[test]
     fn status_uses_the_frontend_contract_names() {
