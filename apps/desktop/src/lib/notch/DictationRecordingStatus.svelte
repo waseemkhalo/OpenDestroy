@@ -13,10 +13,12 @@
     target = null,
     needsAccessibility = false,
     processing = false,
+    warning = '',
   }: {
     target?: DictationTarget | null;
     needsAccessibility?: boolean;
     processing?: boolean;
+    warning?: string;
   } = $props();
 </script>
 
@@ -24,9 +26,10 @@
 <div
   class="dictation-flank dictation-flank--input"
   role="status"
-  aria-label={processing ? "Processing dictation" : "Listening"}
+  aria-label={processing ? "Processing dictation" : warning || "Listening"}
+  title={warning || undefined}
 >
-  <div class="dictation-indicator" data-processing={processing}>
+  <div class="dictation-indicator" data-processing={processing} data-warning={!!warning}>
     <div class="waveform" aria-hidden="true">
       {#each [0, 1, 2, 3, 4] as bar}
         <span class="wave-bar" style={`--i:${bar}`}></span>
@@ -113,6 +116,7 @@
     animation: wave 0.9s ease-in-out infinite;
     animation-delay: calc(var(--i) * -0.18s);
   }
+  .dictation-indicator[data-warning="true"] .wave-bar { background: #e6b64c; }
   .dictation-spinner {
     position: absolute;
     top: 50%;

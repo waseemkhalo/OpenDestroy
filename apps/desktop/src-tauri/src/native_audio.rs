@@ -7,6 +7,26 @@ use tauri::{Manager, State};
 
 const SAMPLE_RATE: u32 = 16_000;
 const MAX_BYTES: usize = SAMPLE_RATE as usize * 2 * 120;
+const CALLBACK_STALL: std::time::Duration = std::time::Duration::from_secs(2);
+
+fn audio_health_error(
+    valid_audio_seen: bool,
+    last_valid_audio_age: std::time::Duration,
+    failed: bool,
+    at_capacity: bool,
+) -> Option<&'static str> {
+    if failed {
+        Some("Microphone capture was interrupted. Check the input device and try again.")
+    } else if at_capacity {
+        None
+    } else if !valid_audio_seen && last_valid_audio_age >= CALLBACK_STALL {
+        Some("No audio is arriving from the microphone. Check macOS Microphone permission and your selected input device, then try again.")
+    } else if valid_audio_seen && last_valid_audio_age >= CALLBACK_STALL {
+        Some("Microphone audio stopped arriving. Check that your input device is connected, then try again.")
+    } else {
+        None
+    }
+}
 fn lock<T>(value: &Mutex<T>) -> MutexGuard<'_, T> {
     value.lock().unwrap_or_else(|error| error.into_inner())
 }
@@ -47,6 +67,7 @@ mod platform {
         ffi::c_void,
         ptr,
         sync::atomic::{AtomicBool, AtomicU32, Ordering},
+        time::Instant,
     };
     // Layouts/signatures from the macOS SDK AudioQueue.h and CoreAudioTypes.h.
     #[repr(C)]
@@ -106,6 +127,9 @@ mod platform {
         recording: AtomicBool,
         level: AtomicU32,
         failed: AtomicBool,
+        valid_buffers: AtomicU32,
+        last_valid_audio: Mutex<Instant>,
+        at_capacity: AtomicBool,
     }
     impl Drop for Samples {
         fn drop(&mut self) {
@@ -145,6 +169,10 @@ mod platform {
         let mut pcm = lock(&samples.pcm);
         let count = data.len().min(MAX_BYTES.saturating_sub(pcm.len())) & !1;
         pcm.extend_from_slice(&data[..count]);
+        if count > 0 {
+            *lock(&samples.last_valid_audio) = Instant::now();
+            samples.valid_buffers.fetch_add(1, Ordering::AcqRel);
+        }
         let total: f32 = data[..count]
             .chunks_exact(2)
             .map(|b| {
@@ -157,6 +185,9 @@ mod platform {
             Ordering::Release,
         );
         let full = pcm.len() == MAX_BYTES;
+        if full {
+            samples.at_capacity.store(true, Ordering::Release);
+        }
         drop(pcm);
         if !full && samples.recording.load(Ordering::Acquire) {
             if unsafe { AudioQueueEnqueueBuffer(queue, buffer, 0, ptr::null()) } != 0 {
@@ -171,6 +202,9 @@ mod platform {
                 recording: AtomicBool::new(true),
                 level: AtomicU32::new(0),
                 failed: AtomicBool::new(false),
+                valid_buffers: AtomicU32::new(0),
+                last_valid_audio: Mutex::new(Instant::now()),
+                at_capacity: AtomicBool::new(false),
             });
             let format = Format {
                 rate: SAMPLE_RATE as f64,
@@ -226,6 +260,17 @@ mod platform {
             self.samples
                 .as_ref()
                 .map_or(0.0, |s| f32::from_bits(s.level.load(Ordering::Acquire)))
+        }
+        pub fn health_error(&self) -> Option<&'static str> {
+            let Some(samples) = self.samples.as_ref() else {
+                return Some("Microphone capture stopped. Check the input device and try again.");
+            };
+            audio_health_error(
+                samples.valid_buffers.load(Ordering::Acquire) > 0,
+                lock(&samples.last_valid_audio).elapsed(),
+                samples.failed.load(Ordering::Acquire),
+                samples.at_capacity.load(Ordering::Acquire),
+            )
         }
         fn stop(&mut self) -> Result<(), String> {
             if self.queue.is_null() {
@@ -293,13 +338,28 @@ mod platform {
         pub fn level(&self) -> f32 {
             0.0
         }
+        pub fn health_error(&self) -> Option<&'static str> {
+            None
+        }
     }
 }
 #[derive(Default)]
-pub struct NativeAudio(Mutex<Option<platform::Recording>>);
+pub struct NativeAudio {
+    recording: Mutex<Option<platform::Recording>>,
+    starting: Mutex<Option<String>>,
+}
+impl NativeAudio {
+    pub(crate) fn health_error(&self, id: &str) -> Option<String> {
+        lock(&self.recording)
+            .as_ref()
+            .filter(|recording| recording.id == id)
+            .and_then(platform::Recording::health_error)
+            .map(str::to_owned)
+    }
+}
 impl NativeAudio {
     fn expire(&self, lease: &str) {
-        let mut current = lock(&self.0);
+        let mut current = lock(&self.recording);
         if matches_owner(current.as_ref().map(|r| r.lease.as_str()), lease) {
             let recording = current.take();
             drop(current);
@@ -307,7 +367,13 @@ impl NativeAudio {
         }
     }
     pub(crate) fn cancel(&self, id: &str) {
-        let mut current = lock(&self.0);
+        {
+            let mut starting = lock(&self.starting);
+            if starting.as_deref() == Some(id) {
+                *starting = None;
+            }
+        }
+        let mut current = lock(&self.recording);
         if matches_owner(current.as_ref().map(|r| r.id.as_str()), id) {
             let recording = current.take();
             drop(current);
@@ -315,7 +381,8 @@ impl NativeAudio {
         }
     }
     pub(crate) fn clear(&self) {
-        let recording = lock(&self.0).take();
+        *lock(&self.starting) = None;
+        let recording = lock(&self.recording).take();
         drop(recording);
     }
 }
@@ -344,17 +411,27 @@ pub fn native_audio_start(
             "Allow Destroy in macOS Privacy & Security → Microphone, then try again.".into(),
         );
     }
-    let mut current = lock(&audio.0);
-    if current.is_some() {
-        return Err("A microphone recording is already active.".into());
-    }
     if !app
         .state::<crate::dictation::DictationSession>()
         .is_active(&session_id)
     {
         return Err("That dictation session was cancelled".into());
     }
-    let recording = platform::Recording::start(session_id.clone())?;
+    {
+        let mut starting = lock(&audio.starting);
+        if lock(&audio.recording).is_some() || starting.is_some() {
+            return Err("A microphone recording is already active.".into());
+        }
+        *starting = Some(session_id.clone());
+    }
+    let started = platform::Recording::start(session_id.clone());
+    {
+        let mut starting = lock(&audio.starting);
+        if starting.as_deref() == Some(&session_id) {
+            *starting = None;
+        }
+    }
+    let recording = started?;
     if !app
         .state::<crate::dictation::DictationSession>()
         .is_active(&session_id)
@@ -362,10 +439,16 @@ pub fn native_audio_start(
         return Err("That dictation session was cancelled".into());
     }
     let lease = recording.lease.clone();
+    let mut current = lock(&audio.recording);
+    if current.is_some() {
+        return Err("A microphone recording is already active.".into());
+    }
     *current = Some(recording);
     drop(current);
     tauri::async_runtime::spawn(async move {
-        tokio::time::sleep(std::time::Duration::from_secs(120)).await;
+        // Keep the bounded final recording available if the webview's 119s
+        // stop timer was throttled while the app was in the background.
+        tokio::time::sleep(std::time::Duration::from_secs(300)).await;
         app.state::<NativeAudio>().expire(&lease);
     });
     Ok(())
@@ -376,7 +459,7 @@ pub fn native_audio_finish(
     audio: State<'_, NativeAudio>,
     session_id: String,
 ) -> Result<Audio, String> {
-    let mut current = lock(&audio.0);
+    let mut current = lock(&audio.recording);
     if !matches_owner(current.as_ref().map(|r| r.id.as_str()), &session_id) {
         return Err("The microphone recording ended or was cancelled. Try dictating again.".into());
     }
@@ -409,10 +492,15 @@ pub fn native_audio_cancel(audio: State<'_, NativeAudio>, session_id: String) {
 }
 #[tauri::command]
 pub fn native_audio_level(audio: State<'_, NativeAudio>, session_id: String) -> f32 {
-    lock(&audio.0)
+    lock(&audio.recording)
         .as_ref()
         .filter(|r| r.id == session_id)
         .map_or(0.0, platform::Recording::level)
+}
+
+#[tauri::command]
+pub fn native_audio_health(audio: State<'_, NativeAudio>, session_id: String) -> Option<String> {
+    audio.health_error(&session_id)
 }
 
 #[cfg(test)]
@@ -439,5 +527,37 @@ mod tests {
         assert!(!matches_owner(Some("new"), "old"));
         assert!(!matches_owner(None, "old"));
         assert!(matches_owner(Some("new"), "new"));
+    }
+    #[test]
+    fn empty_capture_is_rejected_before_audio_can_be_encoded() {
+        assert!(wav(&[]).unwrap_err().contains("No microphone audio"));
+    }
+    #[test]
+    fn startup_without_valid_audio_is_reported_after_grace_period() {
+        assert!(audio_health_error(false, CALLBACK_STALL, false, false)
+            .unwrap()
+            .contains("No audio is arriving"));
+    }
+    #[test]
+    fn active_silent_samples_are_healthy_but_a_later_stall_is_not() {
+        assert_eq!(
+            audio_health_error(true, std::time::Duration::ZERO, false, false),
+            None
+        );
+        assert!(audio_health_error(true, CALLBACK_STALL, false, false)
+            .unwrap()
+            .contains("stopped arriving"));
+    }
+    #[test]
+    fn empty_callbacks_do_not_count_as_valid_audio_and_capacity_is_not_a_stall() {
+        assert!(audio_health_error(false, CALLBACK_STALL, false, false).is_some());
+        assert_eq!(audio_health_error(true, CALLBACK_STALL, false, true), None);
+    }
+    #[test]
+    fn cancelling_hung_startup_releases_its_reservation() {
+        let audio = NativeAudio::default();
+        *lock(&audio.starting) = Some("stalled-start".into());
+        audio.cancel("stalled-start");
+        assert!(lock(&audio.starting).is_none());
     }
 }

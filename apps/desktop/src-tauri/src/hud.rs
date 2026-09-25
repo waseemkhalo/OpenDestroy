@@ -105,8 +105,21 @@ pub fn update_hud(
         .get_webview_window("dictation-hud")
         .ok_or("HUD unavailable")?;
     if snapshot.visible {
-        let (width, height) =
-            crate::geometry::position_hud(&window, &snapshot.phase, !was_visible)?;
+        let has_recording_warning = snapshot.phase == "recording"
+            && snapshot
+                .content
+                .get("message")
+                .and_then(serde_json::Value::as_str)
+                .is_some_and(|message| {
+                    message.starts_with("No sound detected")
+                        || message.starts_with("About 15 seconds left")
+                });
+        let layout_phase = if has_recording_warning {
+            "recording-warning"
+        } else {
+            snapshot.phase.as_str()
+        };
+        let (width, height) = crate::geometry::position_hud(&window, layout_phase, !was_visible)?;
         snapshot.content.insert(
             "camera".into(),
             serde_json::json!({"width":width,"height":height}),

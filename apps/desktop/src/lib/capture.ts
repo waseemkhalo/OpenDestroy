@@ -17,32 +17,56 @@ export class NativeCapture {
  private cancelled=false;
  private startPromise:Promise<void>|null=null;
  private levelTimer:ReturnType<typeof setInterval>|undefined;
+ private healthTimer:ReturnType<typeof setInterval>|undefined;
+ private warningTimer:ReturnType<typeof setTimeout>|undefined;
  private limitTimer:ReturnType<typeof setTimeout>|undefined;
  private polling=false;
- constructor(private sessionId:string,private meter:(v:number)=>void,private timeout:()=>void){}
+ private healthPolling=false;
+ private active=true;
+ private quietSince=Date.now();
+ private quietWarned=false;
+ constructor(private sessionId:string,private meter:(v:number)=>void,private timeout:()=>void,private onError:(message:string)=>void=()=>{},private onWarning:(message:string|null,kind:'quiet'|'limit')=>void=()=>{}){}
  start(mic:string|null){
   this.startPromise=this.startInner(mic);
   return this.startPromise;
  }
  private async startInner(mic:string|null){
-  await invokeAccount('native_audio_start',{sessionId:this.sessionId,deviceId:mic},this.owner);
+  const pending=invokeAccount('native_audio_start',{sessionId:this.sessionId,deviceId:mic},this.owner);
+  // If startup resolves after cancellation or a timeout, dispose its late native queue.
+  void pending.then(()=>{if(this.cancelled)void invoke('native_audio_cancel',{sessionId:this.sessionId}).catch(()=>{});}).catch(()=>{});
+  let startupTimer:ReturnType<typeof setTimeout>|undefined;
+  try{
+   await Promise.race([pending,new Promise<never>((_,reject)=>{
+    startupTimer=setTimeout(()=>reject(new Error('The microphone did not start within 5 seconds. Check macOS Microphone permission and your input device, then try again.')),5000);
+   })]);
+  }catch(error){this.cancel();throw error;}finally{clearTimeout(startupTimer);}
   if(this.cancelled){await invoke('native_audio_cancel',{sessionId:this.sessionId});return;}
   this.levelTimer=setInterval(()=>{
    if(this.polling||this.cancelled)return;
    this.polling=true;
    void invoke<number>('native_audio_level',{sessionId:this.sessionId})
-    .then(level=>{if(!this.cancelled&&this.levelTimer)this.meter(level);})
+    .then(level=>{if(!this.cancelled&&this.levelTimer){this.meter(level);if(level>=0.002){this.quietSince=Date.now();if(this.quietWarned){this.quietWarned=false;this.onWarning(null,'quiet');}}else if(!this.quietWarned&&Date.now()-this.quietSince>=8000){this.quietWarned=true;this.onWarning('No sound detected. Check your microphone.','quiet');}}})
     .catch(()=>{}).finally(()=>{this.polling=false;});
   },100);
+  this.healthTimer=setInterval(()=>{
+   if(!this.active||this.healthPolling)return;
+   this.healthPolling=true;
+   void invoke<string|null>('native_audio_health',{sessionId:this.sessionId}).then(message=>{
+    if(message&&this.active){this.cancel();this.onError(message);}
+   }).catch(()=>{}).finally(()=>{this.healthPolling=false;});
+  },250);
+  this.warningTimer=setTimeout(()=>this.onWarning('About 15 seconds left. Release your shortcut to finish dictation.','limit'),105000);
   // Finish before the native hard deadline, which is independent of WebView timers.
   this.limitTimer=setTimeout(this.timeout,119000);
  }
- private release(){clearInterval(this.levelTimer);this.levelTimer=undefined;clearTimeout(this.limitTimer);this.meter(0);}
+ private release(){clearInterval(this.levelTimer);this.levelTimer=undefined;clearInterval(this.healthTimer);this.healthTimer=undefined;clearTimeout(this.warningTimer);clearTimeout(this.limitTimer);this.meter(0);}
  async finish(){
+  this.active=false;
   await this.startPromise;
   this.release();
   if(this.cancelled)throw new Error('Dictation was cancelled.');
   const audio=await invokeAccount<{audioBase64:string;mimeType:string}>('native_audio_finish',{sessionId:this.sessionId},this.owner);
+  if(!audio.audioBase64)throw new Error('No microphone audio was captured. Check macOS Microphone permission and your input device, then try again.');
   const result=await transcribeDictationRecording({
    encodeAudio:async()=>audio.audioBase64,isCancelled:()=>this.cancelled,
    transcribe:audioBase64=>invokeAccount< {text:string;path:'local'|'cloud'} >('destroy_transcribe_dictation',{audioBase64,mimeType:audio.mimeType},this.owner),
@@ -51,7 +75,7 @@ export class NativeCapture {
   const bytes=Uint8Array.from(atob(audio.audioBase64),character=>character.charCodeAt(0));
   return {text:result.text,blob:new Blob([bytes],{type:audio.mimeType})};
  }
- cancel(){this.cancelled=true;this.release();void invoke('native_audio_cancel',{sessionId:this.sessionId}).catch(()=>{});}
+ cancel(){this.active=false;this.cancelled=true;this.release();void invoke('native_audio_cancel',{sessionId:this.sessionId}).catch(()=>{});}
 }
 export class Capture {
  private owner=captureAccount();

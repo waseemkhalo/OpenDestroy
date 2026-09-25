@@ -91,6 +91,16 @@ const fn recording_hud_height(camera_height: u32) -> u32 {
     }
 }
 
+#[must_use]
+const fn recording_warning_hud_height(camera_height: u32) -> u32 {
+    recording_hud_height(camera_height).saturating_add(84)
+}
+
+#[must_use]
+fn recording_warning_hud_origin_y(screen_bottom: f64, camera_height: u32) -> f64 {
+    screen_bottom - f64::from(recording_hud_height(camera_height))
+}
+
 #[cfg(not(target_os = "macos"))]
 #[must_use]
 pub fn camera_notch_size(_window: &tauri::WebviewWindow) -> Option<(u32, u32)> {
@@ -246,8 +256,13 @@ pub fn position_hud(
     // can read the previous display while a multi-monitor HUD is moving.
     let (camera_width, camera_height) = camera_notch_size_for_screen(&screen)
         .unwrap_or((CAMERA_FALLBACK_WIDTH, CAMERA_FALLBACK_HEIGHT));
-    let recording = matches!(phase, "recording" | "processing");
-    let (width, height) = if recording {
+    let recording = matches!(phase, "recording" | "recording-warning" | "processing");
+    let (width, height) = if phase == "recording-warning" {
+        (
+            f64::from(recording_hud_width(camera_width)),
+            f64::from(recording_warning_hud_height(camera_height)),
+        )
+    } else if recording {
         (
             f64::from(recording_hud_width(camera_width)),
             f64::from(recording_hud_height(camera_height)),
@@ -259,13 +274,15 @@ pub fn position_hud(
         // below the camera gutter. Recording/processing keep their slim notch.
         (440.0, 240.0)
     };
+    let origin_y = if phase == "recording-warning" {
+        recording_warning_hud_origin_y(frame.origin.y + frame.size.height, camera_height)
+    } else {
+        frame.origin.y + frame.size.height - height
+    };
     native.setLevel(NSMainMenuWindowLevel + 2);
     native.setFrame_display(
         NSRect::new(
-            NSPoint::new(
-                frame.origin.x + (frame.size.width - width) / 2.0,
-                frame.origin.y + frame.size.height - height,
-            ),
+            NSPoint::new(frame.origin.x + (frame.size.width - width) / 2.0, origin_y),
             NSSize::new(width, height),
         ),
         true,
@@ -288,7 +305,8 @@ pub fn position_hud(
 mod tests {
     use super::{
         notch_geometry_from_auxiliary_areas, recording_hud_height, recording_hud_width,
-        CAMERA_FALLBACK_HEIGHT, CAMERA_FALLBACK_WIDTH, RECORDING_FLANK_WIDTH, RECORDING_HUD_HEIGHT,
+        recording_warning_hud_height, recording_warning_hud_origin_y, CAMERA_FALLBACK_HEIGHT,
+        CAMERA_FALLBACK_WIDTH, RECORDING_FLANK_WIDTH, RECORDING_HUD_HEIGHT,
     };
 
     #[test]
@@ -324,6 +342,16 @@ mod tests {
             RECORDING_HUD_HEIGHT
         );
         assert_eq!(CAMERA_FALLBACK_HEIGHT, 34);
+    }
+
+    #[test]
+    fn recording_warning_footprint_has_room_for_readable_copy() {
+        assert_eq!(recording_warning_hud_height(CAMERA_FALLBACK_HEIGHT), 130);
+        assert!(recording_warning_hud_height(CAMERA_FALLBACK_HEIGHT) > RECORDING_HUD_HEIGHT);
+        assert_eq!(
+            recording_warning_hud_origin_y(1000.0, CAMERA_FALLBACK_HEIGHT),
+            954.0
+        );
     }
 }
 

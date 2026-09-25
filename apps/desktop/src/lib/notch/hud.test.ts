@@ -102,11 +102,26 @@ describe('separate dictation presentation', () => {
     expect(hudNotice({...initialHud(),error:'network fetch failed: private URL'}).title).toBe('Couldn’t reach your speech service.');
     expect(hudNotice({...initialHud(),error:'unclassified internal failure'}).detail).not.toContain('internal');
   });
+  it('gives live microphone failures actionable input-device recovery guidance', () => {
+    const notice = hudNotice({...initialHud(),error:'No audio is arriving from the microphone. Check macOS Microphone permission and your selected input device, then try again.'});
+    expect(notice.title).toBe('We couldn’t hear your microphone.');
+    expect(notice.detail).toContain('input device');
+  });
   it('keeps processing in the notch until delivery completes', () => {
     const {body}=render(DictationHud,{props:{state:{...initialHud(),visible:true,phase:'processing'}}});
     expect(body).toContain('Processing dictation');
     expect(body).toContain('data-processing="true"');
     expect(body).not.toContain('Open settings');
+  });
+  it('shows quiet and near-limit warnings in the recording notch', () => {
+    for (const warning of ['No sound detected. Check your microphone.','About 15 seconds left. Release your shortcut to finish dictation.']) {
+      const {body}=render(DictationHud,{props:{state:{...initialHud(),visible:true,phase:'recording',message:warning}}});
+      expect(body).toContain(`aria-label="${warning}"`);
+      expect(body).toContain('data-warning="true"');
+      expect(body).toContain(`title="${warning}"`);
+      expect(body).toContain('recording-warning-copy');
+      expect(body).toContain(`>${warning}</p>`);
+    }
   });
   it('uses the brand red for both waveform and spinner', () => {
     const source=readFileSync(new URL('./DictationRecordingStatus.svelte',import.meta.url),'utf8');

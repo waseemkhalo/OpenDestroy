@@ -14,11 +14,14 @@
 </script>
 
 {#if state.visible}
-<section class="hud" class:recording-only={recording} aria-label="Dictation" style={`--camera-width:${state.camera.width}px;--camera-height:${state.camera.height}px`}>
+<section class="hud" class:recording-only={recording} class:recording-warning={recording && (state.message.startsWith('No sound detected') || state.message.startsWith('About 15 seconds left'))} aria-label="Dictation" style={`--camera-width:${state.camera.width}px;--camera-height:${state.camera.height}px`}>
   {#if recording}
     <button class="notch" aria-label="Cancel dictation" onclick={() => act('cancel')}>
-      <RecordingStatus target={state.target} needsAccessibility={state.needsAccessibility} processing={state.phase === 'processing'}/>
+      <RecordingStatus target={state.target} needsAccessibility={state.needsAccessibility} processing={state.phase === 'processing'} warning={state.phase === 'recording' ? state.message : ''}/>
     </button>
+    {#if state.phase === 'recording' && (state.message.startsWith('No sound detected') || state.message.startsWith('About 15 seconds left'))}
+      <p class="recording-warning-copy" role="status">{state.message}</p>
+    {/if}
   {:else}
     <div class="feedback" role={failure?'alert':'status'}>
       {#if failure}<span class="notice-icon" aria-hidden="true">{#if notice.icon==='microphone'}<MicOff size={21}/>{:else if notice.icon==='clipboard'}<ClipboardCheck size={21}/>{:else}<CircleAlert size={21}/>{/if}</span>{/if}
@@ -43,6 +46,8 @@
   :global(html.dictation-hud-window),:global(body.dictation-hud-window),:global(body.dictation-hud-window #app){background:transparent!important}
   .hud{background:#000;color:#f5f4f0;border:1px solid #000;border-top:0;border-radius:0 0 20px 20px;padding:calc(var(--camera-height,34px) + 12px) 20px 16px;max-height:100vh;overflow:auto;font:13px/1.45 -apple-system,BlinkMacSystemFont,sans-serif}
   .hud.recording-only{background:transparent;padding:0;border:0;overflow:hidden}
+  .hud.recording-only.recording-warning{background:#000;border:0;border-radius:0 0 18px 18px;padding:0 0 10px;overflow:visible}
+  .recording-warning-copy{margin:8px 12px 0;color:#f0cf7c;font-size:12px;line-height:18px;text-align:center}
   .notch{display:grid;grid-template-columns:128px var(--camera-width,200px) 128px;width:calc(var(--camera-width,200px) + 256px);min-width:calc(var(--camera-width,200px) + 256px);height:max(46px,var(--camera-height,34px));min-height:max(46px,var(--camera-height,34px));border:0;border-radius:0 0 18px 18px;padding:0;background:#000;cursor:pointer}
   .notch:hover{background:#000}
   .feedback{display:flex;align-items:flex-start;gap:12px}

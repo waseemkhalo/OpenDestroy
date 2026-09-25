@@ -35,7 +35,8 @@ export function hudNotice(state: HudSnapshot): {title: string; detail: string; i
   if (state.clipboardCopied) return {title: 'Copied. Ready to paste.', detail: state.message, icon: 'clipboard'};
   const error = state.error.toLowerCase();
   if (/no speech|no audio|blank_audio|empty recording/.test(error)) {
-    return {title: 'We couldn’t hear you.', detail: 'Check your microphone, then hold your shortcut and try again.', icon: 'microphone'};
+    if (/no speech|blank_audio/.test(error)) return {title: 'We couldn’t hear you.', detail: 'Check your microphone, then hold your shortcut and try again.', icon: 'microphone'};
+    return {title: 'We couldn’t hear your microphone.', detail: /permission|input device|audio is arriving/.test(error) ? 'Check macOS Microphone permission and your selected input device, then hold your shortcut and try again.' : 'Check your input device, then hold your shortcut and try again.', icon: 'microphone'};
   }
   if (/microphone|audio input|recording channels|audioqueue/.test(error)) {
     return {title: 'Your microphone needs attention.', detail: /permission|access|denied/.test(error) ? 'Allow microphone access in macOS Settings, then try again.' : 'Check your input device in Settings, then try again.', icon: 'microphone'};

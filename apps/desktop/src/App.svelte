@@ -52,6 +52,8 @@
  const account=()=>({expectedUserId:user,expectedBackendUrl:connectedServer,revision:connectionRevision});
  const owns=(owner:ReturnType<typeof account>)=>!appDisposed&&owner.revision===connectionRevision&&owner.expectedUserId===user&&owner.expectedBackendUrl===connectedServer;
  let capture:NativeCapture|null=null,session:string|null=null,generation=0,startedAt=0;
+ let microphoneQuietWarning=$state(''),microphoneLimitWarning=$state('');
+ const recordingWarning=$derived(microphoneLimitWarning||microphoneQuietWarning);
  let micTestLevel=$state(0),micTesting=$state(false),micTestStream:MediaStream|null=null,micTestContext:AudioContext|null=null,micTestSource:MediaStreamAudioSourceNode|null=null,micTestTimer:ReturnType<typeof setTimeout>|undefined,micTestGeneration=0;
  let emoji=$state<DictationEmojiChoice[]>([]),media=$state<DictationMediaResult[]>([]),links=$state<Link[]>([]),leading=$state(''),query=$state(''),kind=$state<DictationMediaKind>('gif'),page=$state(0),busy=$state(false),voiceReady=$state(false),mediaOpen=$state(false),driveSearch=$state(false),giphyDirect=$state(false);
  let updatesEnabled=$state(false);
@@ -94,7 +96,7 @@
  function resetMedia(){mediaRequest++;mediaPool=[];mediaOffset=0;mediaEnded=false;mediaInitialized=false;page=0;media=[];}
  function clearPicker(){resetMedia();emoji=[];media=[];links=[];leading='';query='';page=0;mediaOpen=false;driveSearch=false;}
  async function panel(open:boolean,focus=true){if(native)await invoke('show_panel',{expanded:open,focus});}
- async function cancel(){hudVisible=false;clipboardCopied=false;error='';message='';needsAccessibility=false;clearRecovery();++generation;capture?.cancel();capture=null;const id=session;session=null;phase='idle';voiceReady=false;busy=false;clearPicker();if(id)await invoke('destroy_dictation_cancel',{sessionId:id}).catch(()=>{});}
+ async function cancel(){hudVisible=false;clipboardCopied=false;error='';message='';microphoneQuietWarning='';microphoneLimitWarning='';needsAccessibility=false;clearRecovery();++generation;capture?.cancel();capture=null;const id=session;session=null;phase='idle';voiceReady=false;busy=false;clearPicker();if(id)await invoke('destroy_dictation_cancel',{sessionId:id}).catch(()=>{});}
  function stopMicTest(){++micTestGeneration;clearTimeout(micTestTimer);micTestTimer=undefined;micTestSource?.disconnect();micTestSource=null;micTestStream?.getTracks().forEach(track=>track.stop());micTestStream=null;void micTestContext?.close().catch(()=>{});micTestContext=null;micTesting=false;micTestLevel=0;}
  async function testMicrophone(){
   if(!native)return nativeOnly();
@@ -116,7 +118,7 @@
   return()=>clearTimeout(timer);
  });
  $effect(()=>{
-  currentHud=sanitizeHudSnapshot({revision:++hudRevision,visible:hudVisible,phase,camera,target,message,error,needsAccessibility,clipboardCopied,recovery:!!recovery,voiceReady,emoji,media,links,leading,query,kind,page,busy,mediaOpen,mediaFavoritesEnabled:!giphyDirect});
+  currentHud=sanitizeHudSnapshot({revision:++hudRevision,visible:hudVisible,phase,camera,target,message:phase==='recording'&&recordingWarning?recordingWarning:message,error,needsAccessibility,clipboardCopied,recovery:!!recovery,voiceReady,emoji,media,links,leading,query,kind,page,busy,mediaOpen,mediaFavoritesEnabled:!giphyDirect});
   if(native)void invoke('update_hud',{snapshot:currentHud}).catch(e=>{hudFailure=String(e);void panel(true,false);});
  });
  async function hudAction(action:HudAction){
@@ -243,7 +245,7 @@
  stopMicTest();
  if(!user){await invoke('destroy_dictation_cancel',{sessionId:value.sessionId});message='Connect your backend in Settings first.';hudVisible=true;return;}
  clearRecovery();clipboardCopied=false;message='';const gen=++generation;session=value.sessionId;target=value.target;needsAccessibility=value.needsAccessibility;error='';phase='recording';startedAt=Date.now();
- hudFailure='';hudVisible=true;const current=new NativeCapture(value.sessionId,v=>{if(gen===generation)level=v;},()=>{void stop()});capture=current;
+ hudFailure='';microphoneQuietWarning='';microphoneLimitWarning='';hudVisible=true;const current=new NativeCapture(value.sessionId,v=>{if(gen===generation)level=v;},()=>{void stop()},text=>{if(gen!==generation)return;void invoke('destroy_dictation_cancel',{sessionId:value.sessionId}).catch(()=>{});capture=null;session=null;phase='idle';voiceReady=false;error=text;hudVisible=true;},(text,kind)=>{if(gen!==generation)return;if(kind==='quiet')microphoneQuietWarning=text||'';else if(text)microphoneLimitWarning=text;});capture=current;
  try{await current.start(mic||null);if(gen!==generation)current.cancel();}catch(e){if(gen!==generation)return;current.cancel();const cancelled=cancel();const cancellationGeneration=generation;await cancelled;if(appDisposed||generation!==cancellationGeneration)return;fail(e);hudVisible=true;}
  }
  async function stop(){
@@ -381,7 +383,7 @@
 <svelte:window onkeydown={keys}/>
 <main class:home-active={!onboarding} style={`--camera-width:${camera.width}px;--camera-height:${camera.height}px`}>
  <div class="topline" data-tauri-drag-region></div>
- {#if phase!=='idle'||voiceReady||error||hudFailure||recovery||needsAccessibility}<div class="status" role="status"><p>{phase==='recording'?'Listening — release to finish':phase==='processing'?'Transcribing…':message}</p>{#if phase!=='idle'||voiceReady}<button onclick={()=>void cancel()}>Cancel <kbd>Esc</kbd></button>{/if}</div>{/if}
+ {#if phase!=='idle'||voiceReady||error||hudFailure||recovery||needsAccessibility}<div class="status" role="status"><p>{phase==='recording'?(recordingWarning||'Listening — release to finish'):phase==='processing'?'Transcribing…':message}</p>{#if phase!=='idle'||voiceReady}<button onclick={()=>void cancel()}>Cancel <kbd>Esc</kbd></button>{/if}</div>{/if}
  {#if hudFailure}<p class="error" role="alert">{hudFailure}</p>{/if}
  {#if error}<p class="error" role="alert">{error}</p>{/if}
  {#if recovery}<button onclick={()=>void copyRecovery()}>Copy recognized text <small>· clears after 30 seconds</small></button>{/if}

@@ -229,6 +229,7 @@ pub fn run() {
                 native_audio::native_audio_finish,
                 native_audio::native_audio_cancel,
                 native_audio::native_audio_level,
+                native_audio::native_audio_health,
                 public_setup::public_setup_status,
                 public_setup::public_configure_speech,
                 public_setup::public_download_model,

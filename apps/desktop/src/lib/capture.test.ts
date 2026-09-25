@@ -70,6 +70,95 @@ describe('native global capture',()=>{
   expect(invoke).toHaveBeenCalledWith('native_audio_cancel',{sessionId:'hold-3'});
   expect(vi.mocked(invoke).mock.calls.some(([command])=>command==='destroy_transcribe_dictation')).toBe(false);
  });
+ it('bounds native startup and cancels a queue that resolves after the deadline',async()=>{
+  vi.useFakeTimers();
+  let ready!:()=>void;
+  vi.mocked(invoke).mockImplementation(async(command)=>{
+   if(command==='native_audio_start')return new Promise<void>(resolve=>ready=resolve);
+  });
+  const capture=new NativeCapture('hold-start-timeout',()=>{},()=>{});
+  const started=capture.start(null);
+  const failed=expect(started).rejects.toThrow('did not start within 5 seconds');
+  await vi.advanceTimersByTimeAsync(5000);
+  await failed;
+  expect(invoke).toHaveBeenCalledWith('native_audio_cancel',{sessionId:'hold-start-timeout'});
+  ready();
+  await vi.advanceTimersByTimeAsync(0);
+  expect(vi.mocked(invoke).mock.calls.filter(([command])=>command==='native_audio_cancel')).toHaveLength(2);
+  vi.useRealTimers();
+ });
+ it('surfaces a stalled native input while the key is still held and cancels capture',async()=>{
+  vi.useFakeTimers();
+  const onError=vi.fn();
+  vi.mocked(invoke).mockImplementation(async(command)=>command==='native_audio_health'
+   ? 'Microphone audio stopped arriving. Check that your input device is connected, then try again.'
+   : undefined);
+  const capture=new NativeCapture('hold-health',()=>{},()=>{},onError);
+  await capture.start(null);
+  await vi.advanceTimersByTimeAsync(250);
+  expect(onError).toHaveBeenCalledWith(expect.stringContaining('input device'));
+  expect(invoke).toHaveBeenCalledWith('native_audio_cancel',{sessionId:'hold-health'});
+  expect(invoke).not.toHaveBeenCalledWith('native_audio_finish',expect.anything());
+  vi.useRealTimers();
+ });
+ it('finishes at the 119-second safety timer without cancelling the retained recording',async()=>{
+  vi.useFakeTimers();
+  vi.mocked(invoke).mockImplementation(async(command)=>{
+   if(command==='native_audio_finish')return {audioBase64:btoa('audio'),mimeType:'audio/wav'};
+   if(command==='destroy_transcribe_dictation')return {text:'The full recording',path:'local'};
+   return command==='native_audio_health'?null:0;
+  });
+  let capture!:NativeCapture;
+  const timeout=vi.fn(()=>void capture.finish());
+  capture=new NativeCapture('hold-limit',()=>{},timeout);
+  await capture.start(null);
+  await vi.advanceTimersByTimeAsync(119000);
+  expect(timeout).toHaveBeenCalledTimes(1);
+  expect(invoke).toHaveBeenCalledWith('native_audio_finish',expect.objectContaining({sessionId:'hold-limit'}));
+  expect(invoke).not.toHaveBeenCalledWith('native_audio_cancel',{sessionId:'hold-limit'});
+  vi.useRealTimers();
+ });
+ it('clears a quiet advisory when sound resumes without clearing the near-limit warning',async()=>{
+  vi.useFakeTimers();
+  let level=0;
+  vi.mocked(invoke).mockImplementation(async(command)=>command==='native_audio_level'?level:command==='native_audio_health'?null:undefined);
+  const warnings:Array<[string|null,'quiet'|'limit']>=[];
+  const capture=new NativeCapture('hold-warnings',()=>{},()=>{},()=>{},(text,kind)=>warnings.push([text,kind]));
+  await capture.start(null);
+  await vi.advanceTimersByTimeAsync(8100);
+  expect(warnings).toContainEqual(['No sound detected. Check your microphone.','quiet']);
+  level=0.5;
+  await vi.advanceTimersByTimeAsync(150);
+  expect(warnings).toContainEqual([null,'quiet']);
+  await vi.advanceTimersByTimeAsync(105000-8250);
+  expect(warnings).toContainEqual(['About 15 seconds left. Release your shortcut to finish dictation.','limit']);
+  level=0;
+  await vi.advanceTimersByTimeAsync(8500);
+  expect(warnings).toContainEqual(['About 15 seconds left. Release your shortcut to finish dictation.','limit']);
+  expect(warnings.filter(([,kind])=>kind==='limit')).toHaveLength(1);
+  capture.cancel();
+  vi.useRealTimers();
+ });
+ it('ignores a deferred health failure that arrives after finish begins',async()=>{
+  let reportHealth!:(value:string)=>void;
+  vi.mocked(invoke).mockImplementation(async(command)=>{
+   if(command==='native_audio_health')return new Promise<string>(resolve=>reportHealth=resolve);
+   if(command==='native_audio_finish')return {audioBase64:btoa('audio'),mimeType:'audio/wav'};
+   if(command==='destroy_transcribe_dictation')return {text:'Finished safely',path:'local'};
+  });
+  const onError=vi.fn();
+  vi.useFakeTimers();
+  const capture=new NativeCapture('hold-health-race',()=>{},()=>{},onError);
+  await capture.start(null);
+  await vi.advanceTimersByTimeAsync(250);
+  const finished=capture.finish();
+  reportHealth('Microphone audio stopped arriving. Check your input device.');
+  expect((await finished).text).toBe('Finished safely');
+  await Promise.resolve();
+  expect(onError).not.toHaveBeenCalled();
+  expect(invoke).not.toHaveBeenCalledWith('native_audio_cancel',{sessionId:'hold-health-race'});
+  vi.useRealTimers();
+ });
  it('does not send captured audio after the connection owner changes',async()=>{
   vi.mocked(invoke).mockImplementation(async(command)=>{
    if(command==='native_audio_finish'){

@@ -34,4 +34,12 @@ describe("DictationRecordingStatus", () => {
     expect(css).toContain("width:calc(var(--camera-width,200px) + 256px)");
     expect(css).toContain("height:max(46px,var(--camera-height,34px))");
   });
+
+  it("renders recording warnings in the notch status", () => {
+    const warning = "About 15 seconds left. Release your shortcut to finish dictation.";
+    const { body } = render(DictationRecordingStatus, { props: { warning } });
+    expect(body).toContain(`aria-label="${warning}"`);
+    expect(body).toContain(`title="${warning}"`);
+    expect(body).toContain('data-warning="true"');
+  });
 });
