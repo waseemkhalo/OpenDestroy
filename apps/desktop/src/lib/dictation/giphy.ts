@@ -107,7 +107,10 @@ export function dictationMediaAvailable(): boolean {
 
 // Speech models often spell a spoken "gif" as "giff" or "jiff"; neither is an English word.
 const KIND = "(?<kind>gif|giff|jif|jiff|giphy|sticker)s?";
-const VERB = "(?:add|insert|find|use|show|give|put|paste|drop|send)";
+const VERB =
+  "(?:add|insert|find|use|show|give|put|paste|drop|send|get|grab|search(?:\\s+for)?|pull\\s+up|look\\s+up|reply\\s+with|respond\\s+with|throw\\s+in)";
+/** Speech models often punctuate right after the media word ("Add a GIF, laughing"). */
+const KIND_BREAK = "[,:\u2014-]?";
 
 /**
  * Boundary between the rep's message and the media command.
@@ -128,7 +131,7 @@ const LEADING = "(?:(?<leading>.+?)[.,!?;:]?\\s+)?";
  */
 const LEADING_PUNCTUATED = "(?:(?<leading>.+?)[.!?]\\s+)?";
 const KIND_FIRST = new RegExp(
-  `^${LEADING}(?:please\\s+)?${VERB}\\s+(?:me\\s+)?(?:a|an|some)?\\s*${KIND}(?:\\s+(?:of|for|that\\s+says))?\\s+(?<query>.+?)[.!?]*$`,
+  `^${LEADING}(?:please\\s+)?${VERB}\\s+(?:me\\s+)?(?:a|an|some)?\\s*${KIND}${KIND_BREAK}(?:\\s+(?:of|for|that\\s+says|about|with))?\\s+(?<query>.+?)[.!?]*$`,
   "iu",
 );
 const QUERY_FIRST = new RegExp(
@@ -136,9 +139,27 @@ const QUERY_FIRST = new RegExp(
   "iu",
 );
 const BARE_KIND = new RegExp(
-  `^${LEADING_PUNCTUATED}(?:please\\s+)?${KIND}(?:\\s+(?:of|for))?\\s+(?<query>.+?)[.!?]*$`,
+  `^${LEADING_PUNCTUATED}(?:please\\s+)?${KIND}${KIND_BREAK}(?:\\s+(?:of|for))?\\s+(?<query>.+?)[.!?]*$`,
   "iu",
 );
+
+/**
+ * A whole utterance that is only "<up to three words> gif" ("Laughing GIF.",
+ * "funny cat gif") is a request, not prose. Leading text is not allowed, and
+ * a query that opens like a sentence ("I love GIFs") is left as dictation.
+ */
+const STANDALONE = new RegExp(
+  `^(?:please\\s+)?(?:(?:a|an|some)\\s+)?(?<query>\\S+(?:\\s+\\S+){0,2})\\s+${KIND}[.!?]*$`,
+  "iu",
+);
+const SENTENCE_START =
+  /^(?:i|i'm|we|you|they|he|she|it|that|this|these|those|there|people|my|our|your|their|love|hate|no|not|more|less|all|any|so|too|just|use|using)$/iu;
+
+function standaloneIntent(input: string): RegExpExecArray | null {
+  const match = STANDALONE.exec(input);
+  const first = match?.groups?.query?.split(/\s+/u)[0] ?? "";
+  return match && !SENTENCE_START.test(first) ? match : null;
+}
 
 function trimQuery(value: string): string {
   return value.trim().replace(/^[“”"']+|[“”"']+$/gu, "").trim();
@@ -163,7 +184,8 @@ function stripRequestScaffolding(value: string): string {
  */
 export function extractDictationMediaIntent(transcript: string): DictationMediaIntent | null {
   const input = transcript.trim();
-  const match = KIND_FIRST.exec(input) ?? QUERY_FIRST.exec(input) ?? BARE_KIND.exec(input);
+  const match =
+    KIND_FIRST.exec(input) ?? QUERY_FIRST.exec(input) ?? BARE_KIND.exec(input) ?? standaloneIntent(input);
   if (!match?.groups) return null;
   const query = trimQuery(match.groups.query ?? "");
   if (!query || [...query].length > 50) return null;

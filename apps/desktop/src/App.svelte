@@ -259,8 +259,9 @@
  const selection=prefs?.selected_text_editing?await invoke<string|null>('destroy_dictation_selected_text',{sessionId:id}):null;if(gen!==generation)return;
  if(selection){await compose(text,'edit_selected',selection);return;}
  if(isPreviousDictationCorrection(text)){const previous=await invoke<string|null>('destroy_dictation_previous_text',{sessionId:id});if(gen!==generation)return;if(!previous)throw new Error('No recent dictation in this exact field to correct.');await compose(text,'correct_previous',null,previous);return;}
- const ei=extractDictationEmojiIntent(text);if(ei){leading=stripCommandScaffolding(ei.leadingText);query=ei.query;emoji=emojiChoices(ei.query);phase='picker';message='Choose an emoji';return;}
+ // Media first: "Send a reaction GIF of…" names a GIF, not an emoji.
  const mi=extractDictationMediaIntent(text);if(mi){leading=mi.leadingText;query=mi.query;kind=mi.kind;mediaOpen=true;phase='picker';await searchMedia();return;}
+ const ei=extractDictationEmojiIntent(text);if(ei){leading=stripCommandScaffolding(ei.leadingText);query=ei.query;emoji=emojiChoices(ei.query);phase='picker';message='Choose an emoji';return;}
  const drive=extractDictationDriveIntent(text);if(drive){if(!native)throw new Error('Drive search is available in the native app only.');leading=drive.messageText;query=drive.query;const result=await searchGoogleDriveLinks(query);if(gen!==generation)return;links=result;driveSearch=true;phase='picker';message='Choose a Drive link. Sharing permissions stay unchanged.';if(!links.length)throw new Error('No Drive file matched that request.');return;}
  const file=extractDictationAttachmentIntent(text);if(file){driveSearch=false;leading=file.messageText;query=file.query;const result=await api<{results:Link[]}>('POST','/v1/links/search',{query});if(gen!==generation)return;links=result.results;phase='picker';message='Choose a saved link. Recipient access is unchanged.';if(!links.length)throw new Error('No saved link matched. Add a named HTTPS link in Connection settings.');return;}
  const rewrite=extractTerminalRewriteCommand(text);await compose(rewrite??text,rewrite!==null?'rewrite':'dictate');
@@ -385,7 +386,8 @@
 <svelte:window onkeydown={keys}/>
 <main class:home-active={!onboarding} style={`--camera-width:${camera.width}px;--camera-height:${camera.height}px`}>
  <div class="topline" data-tauri-drag-region></div>
- {#if phase!=='idle'||voiceReady||error||hudFailure||recovery||needsAccessibility}<div class="status" role="status"><p>{phase==='recording'?(recordingWarning||'Listening — release to finish'):phase==='processing'?'Transcribing…':message}</p>{#if phase!=='idle'||voiceReady}<button onclick={()=>void cancel()}>Cancel <kbd>Esc</kbd></button>{/if}</div>{/if}
+ <!-- Recording, transcribing and pickers live in the notch; Esc still cancels. -->
+ {#if phase==='idle'&&!voiceReady&&message&&(error||hudFailure||recovery||needsAccessibility)}<div class="status" role="status"><p>{message}</p></div>{/if}
  {#if hudFailure}<p class="error" role="alert">{hudFailure}</p>{/if}
  {#if error}<p class="error" role="alert">{error}</p>{/if}
  {#if recovery}<button onclick={()=>void copyRecovery()}>Copy recognized text <small>· clears after 30 seconds</small></button>{/if}
