@@ -1,6 +1,6 @@
 # Publication scope evidence — 2026-09-24
 
-Status: blocked for publication. This review covers the dirty working tree based on `72c33f377e07709a52776c5ecc3307577fcb37b0`, not an approved release candidate. Existing changes were preserved. No ownership or redistribution rights are inferred from file presence, UI approval, hashes, or the project license.
+Status: binary-scope findings resolved by owner decision on 2026-09-25 (see "Owner decisions"); the text below is the 2026-09-24 snapshot. This review covers the dirty working tree based on `72c33f377e07709a52776c5ecc3307577fcb37b0`, not an approved release candidate. Existing changes were preserved. No ownership or redistribution rights are inferred from file presence, UI approval, hashes, or the project license.
 
 ## Narrow scope corrections
 
@@ -50,7 +50,21 @@ Additional local artwork fingerprints (SHA256):
 | `settings-landscape-v2.png` | `69440e56b14461b6ce92e8ca07dac031b07be5e20ba2755dfbcd1377439ac330` |
 | `voice-ink.png` | `9640bbf6d89519fd780e7558caf5b7630097b59eaef86cfa5f3ca3a387cfd9df` |
 
-## Remaining publication gate
+## Owner decisions — 2026-09-25
+
+The repository owner (waseemkhalo) made these decisions and asked for them to be recorded. Each file is now listed by exact path in `PUBLIC_BINARY_PATHS` in `scripts/audit-public.py`; no pattern or blanket exemption was added.
+
+| Files | Decision |
+|---|---|
+| `art/daily-ink-approved-source.png`, `art/daily-ink-landscape.png`, `art/daily-ink-landscape-v2.png` | Owner states they generated these images and approves publishing them. The two landscape files remain unused by current source. |
+| `provider-logos/giphy.png`, `provider-logos/google-drive.png` | Kept to identify the optional GIPHY and Google Drive integrations. They remain the providers' marks; follow each provider's brand and attribution guidelines. |
+| `app-icons/0.png` … `app-icons/19.png` | Kept on the Home screen to show compatibility with the named products. They remain third-party trademarks, are not relicensed under this project's MIT license, and imply no endorsement. |
+
+The owner also states they own the extracted ("Sky-derived") source and approve publishing it under MIT. See `docs/LAUNCH_READINESS.md`.
+
+After these entries, `python3 scripts/audit-public.py` passes: 1,215 distinct source blobs, 13 reachable commits, working tree and index checked.
+
+## Remaining publication gate (superseded 2026-09-25)
 
 Verification: the final `python3 -B scripts/audit-public.py` run exited 1 with exactly 25 findings, all unexpected binaries listed below; no remaining outside-scope or personal-path findings were reported. `python3 -B -m unittest discover -s scripts -p 'test_public_audit.py'` passed all four existing guard regressions. Scoped Git whitespace checks passed. Audit counts are a working-tree snapshot and must be rerun against the final candidate after concurrent edits finish.
 
