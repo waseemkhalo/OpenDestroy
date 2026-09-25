@@ -1,58 +1,114 @@
-# Destroy Dictation
+<p align="center">
+  <img src="apps/desktop/public/art/voice-ink.png" alt="A red sun over ink-wash mountains" width="720">
+</p>
 
-Speak into the Mac app you are already using. Hold a shortcut, speak, and release to insert your words into the original field.
+<h1 align="center">Destroy Dictation</h1>
 
-**Community preview, version 0.1.0.** This is a native macOS app with local speech, bring-your-own-key provider paths, and an optional self-hosted dictation service. No public signed installer is available yet. Real microphone, editor, model/provider and installation checks remain release gates.
+<p align="center">
+  <b>Your voice, in ink.</b><br>
+  Hold a key, speak, and release. Your words land in the Mac app you’re already using.<br>
+  Open source. No account. No subscription. Speech can stay entirely on your Mac.
+</p>
 
-## What is included
+<p align="center">
+  <a href="#quick-start">Quick start</a> ·
+  <a href="#what-you-can-say">What you can say</a> ·
+  <a href="#privacy">Privacy</a> ·
+  <a href="docs/PARITY.md">Status &amp; limitations</a> ·
+  <a href="CONTRIBUTING.md">Contributing</a>
+</p>
 
-- Hold-to-talk with a separate recording HUD, waveform and destination-app icon.
-- Text cleanup, explicit rewriting, selected-text editing, correction and undo.
-- Microphone selection, language, vocabulary, writing preferences and voice snippets.
-- Emoji choices and spoken selection; configurable GIF/sticker integration and favorites.
-- Two-stage voice-note recording and handoff to the current app.
-- Spoken lookup of saved file links, with a three-choice picker.
-- First-run setup for local speech, OpenAI/Gemini keys, an existing backend, and optional personal integrations.
-- Personal settings export/deletion and a local encrypted SQLite service.
+> **Community preview (0.1.0).** Build it from source today. A signed, notarized installer is not available yet, and real-hardware release checks are still in progress. See [status](#status).
 
-“Saved file dictation” here inserts a saved HTTPS link. It does not upload file bytes, change sharing, or transcribe imported audio/video files. The separate, opt-in Google Drive integration can search existing Drive links; it does not upload files or change sharing. Media availability depends on configured providers and the receiving app. See [capabilities and limitations](docs/PARITY.md).
+<!-- Add a 30–60 second demo GIF or video here, recorded on a real Mac. -->
 
-This repository provides dictation software, not trained model weights. Local speech downloads a pinned model on demand; the model is not included here. OpenAI, Gemini and self-hosted modes use the route you choose, and provider charges may apply. No route silently falls back to another provider.
+## Why Destroy
 
-## Run from source
+- **Works where you already type.** Slack, Gmail, Notion, Cursor, ChatGPT, Docs. If the field is editable, Destroy inserts into that exact field. Secure and read-only fields are never touched.
+- **You choose where speech runs.** Run a local model such as NVIDIA Parakeet on your Mac, so audio never leaves the machine. Or use your own OpenAI or Gemini key, or your own self-hosted relay. Destroy never silently switches to a different provider.
+- **More than dictation.** Pick an emoji, GIF or sticker by voice. Attach a Drive file by saying “attach my resume”. Hand off a voice note. Undo the last insertion by voice.
+- **Nothing to sign up for.** Keys live in the macOS Keychain. Transcripts stay in memory, not on disk. There is no Destroy account and no hosted service.
 
-You need macOS 14 or newer, Xcode command-line tools, Rust stable, Node.js 22+, and Python 3. The macOS version and both CPU architectures are build targets; only tested combinations should be treated as verified.
+## What you can say
 
-For the self-hosted backend path, initialize the local service from the repository root:
+| Say | What happens |
+|---|---|
+| *hold ⌘` and speak* | Clean text is inserted into the field you were typing in |
+| “**undo that**” / “**scratch that**” | Removes your last insertion from the same field |
+| “That demo was incredible. **Add a proud reaction GIF**” | Keeps your sentence, then offers three GIFs; say “**two**” or “**show me more**” |
+| “**Insert a sticker of** thumbs up” | Sticker picker |
+| “**Add a** celebration **emoji**” | Three emoji choices you can pick by voice or keyboard |
+| “Hey Amy, **attach my pitch deck**” | Finds the file in Google Drive or your saved links and inserts its existing link; sharing is unchanged |
+| “**Voice note**” | Your next hold records a voice note and hands it to the current app |
+| *a saved snippet phrase* | Inserts the snippet, with your saved variables filled in |
+
+Writing preferences, vocabulary and snippets are in **Dictionary** and **Writing** in the app.
+
+**Needs the self-hosted service:** “…**rewrite**” at the end of an utterance, voice edits to selected text, and corrections like “**change Tuesday to Wednesday**”. In on-device and bring-your-own-key modes these are turned off rather than sent anywhere unexpected. See [Self-hosting](docs/SELF_HOSTING.md).
+
+GIFs use your own [GIPHY](https://developers.giphy.com/) key. Drive search uses your own [Composio](https://composio.dev/) project with read-only metadata access. Both are optional and set up during onboarding or later in Settings. See [Integrations](docs/INTEGRATIONS.md).
+
+## Quick start
+
+**Requirements:** macOS 14+, Xcode Command Line Tools, CMake, Rust stable and Node.js 22+.
 
 ```sh
-python3 scripts/init-backend.py
-```
-
-Edit the generated private `.env` and set `OPENAI_API_KEY` for batch transcription. Optional live transcription and media settings are explained in [Self-hosting](docs/SELF_HOSTING.md). Keep backend provider keys on the service; native OpenAI/Gemini keys are stored by the app in macOS Keychain.
-
-Start the service in one terminal when using backend mode:
-
-```sh
-python3 scripts/run-backend.py
-```
-
-Start the native app in another:
-
-```sh
-cd apps/desktop
+git clone https://github.com/waseemkhalo/Destroy-Dictation.git
+cd Destroy-Dictation/apps/desktop
 npm ci
 npm run dev
 ```
 
-`npm run dev` launches the native Tauri application. `npm run dev:web` is only a browser preview and cannot perform system-wide dictation.
+The first launch walks you through three steps:
 
-On first launch, choose local speech, a native provider key, or **Advanced connection** for the self-hosted backend. For backend mode, use `http://127.0.0.1:8787` and the token from `data/desktop-access-token.txt`. Allow Microphone and, for direct insertion, Accessibility. Choose a free shortcut if another app already uses the default. Focus a disposable editable document, hold the shortcut, speak and release. Never disable Gatekeeper as an installation workaround.
+1. **Speech.** Choose **On this Mac** and download a local model. The pinned Parakeet model is about 640 MB and checksum-verified (see [local models](docs/LOCAL_MODELS.md)). Or paste an OpenAI or Gemini key.
+2. **Your Mac.** Allow Microphone. Allow Accessibility so text goes straight into the field; without it, Destroy falls back to copy-and-paste. Pick a shortcut if ⌘` is taken.
+3. **Connections.** Optionally add GIPHY or Google Drive.
 
-The community app uses its own bundle identity, Keychain namespace and preferences. It can be installed alongside another app without sharing its credentials.
+Then click into any text field, hold your shortcut, speak and release.
 
-## Develop and contribute
+> `npm run dev` builds and launches the native app. `npm run dev:web` only previews the interface in a browser; it can’t dictate. Never disable Gatekeeper to run a build.
 
-Start with [Contributing](CONTRIBUTING.md), [Architecture](docs/ARCHITECTURE.md), [Privacy](docs/PRIVACY.md), and [Verification](docs/VERIFICATION.md). Run the frontend, Rust and Python checks before submitting changes. The publication audit checks the source allowlist, staged files and reachable Git history.
+<details>
+<summary><b>Advanced: run the self-hosted service</b></summary>
 
-The source license is [MIT](LICENSE); dependency licenses remain their authors’ licenses. The first public release requires the ownership and redistribution review described in [Release preparation](docs/RELEASE.md). No provider credentials, accounts or service entitlements are included.
+The optional service adds provider-backed rewrite, selection editing, correction and live transcription. It runs on your own Mac or server, and provider keys stay on the service.
+
+```sh
+python3 scripts/init-backend.py   # creates a private .env; set OPENAI_API_KEY
+python3 scripts/run-backend.py    # serves http://127.0.0.1:8787
+```
+
+In onboarding, choose **Advanced connection** and enter `http://127.0.0.1:8787` and the token from `data/desktop-access-token.txt`. Remote deployments need HTTPS and the controls described in [Self-hosting](docs/SELF_HOSTING.md).
+</details>
+
+## Privacy
+
+- **On this Mac:** audio is transcribed in-process and never leaves your machine.
+- **Your own key:** audio goes only to the provider you chose, billed to your account.
+- **Transient data:** raw recordings and selected text are not kept. Recent transcripts live in memory for the session.
+- **Local storage:** only settings, vocabulary, snippets, saved links, favorites and daily word counts are stored. You can export or delete them from Settings.
+- **No actions on your behalf:** Destroy never sends messages or changes file sharing from speech.
+
+Full details: [Privacy](docs/PRIVACY.md) · [Security](SECURITY.md)
+
+## Status
+
+Destroy is a **community preview**. The source builds and its automated suites pass. The following are still being verified on real hardware before a signed release:
+
+- microphone and editor behavior across apps
+- local model speed on Apple Silicon
+- provider calls
+- installing and updating from a notarized DMG
+
+[PARITY.md](docs/PARITY.md) lists every capability with its remaining limits. [VERIFICATION.md](docs/VERIFICATION.md) records what has been tested and how.
+
+**Not included:** transcribing imported audio or video files, Windows or Linux apps, and bundled model weights (models download on demand).
+
+## Contributing
+
+Bug reports, editor-compatibility reports and focused pull requests are welcome. Start with [CONTRIBUTING.md](CONTRIBUTING.md) and [Architecture](docs/ARCHITECTURE.md). Please don’t put recordings, tokens or personal text in public issues; report vulnerabilities as described in [SECURITY.md](SECURITY.md).
+
+## License
+
+Source code is [MIT](LICENSE). Dependencies keep their own licenses ([notices](THIRD_PARTY_NOTICES.md)). The optional Parakeet model is published by its authors under CC BY 4.0 and downloaded separately; see [model licenses](docs/MODEL_LICENSES.md). No provider credentials, accounts or service entitlements are included.
