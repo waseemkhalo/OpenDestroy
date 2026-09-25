@@ -105,7 +105,8 @@ export function dictationMediaAvailable(): boolean {
   return mediaAvailable;
 }
 
-const KIND = "(?<kind>gif|jif|giphy|sticker)s?";
+// Speech models often spell a spoken "gif" as "giff" or "jiff"; neither is an English word.
+const KIND = "(?<kind>gif|giff|jif|jiff|giphy|sticker)s?";
 const VERB = "(?:add|insert|find|use|show|give|put|paste|drop|send)";
 
 /**

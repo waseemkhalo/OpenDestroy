@@ -825,6 +825,15 @@ pub fn disconnect_giphy() -> Result<IntegrationStatus, String> {
     local_status()
 }
 
+/// GIPHY's search endpoints are plural (`/v1/gifs/search`); the singular form is a 404.
+fn giphy_search_path(kind: &str) -> Option<&'static str> {
+    match kind {
+        "gif" => Some("gifs"),
+        "sticker" => Some("stickers"),
+        _ => None,
+    }
+}
+
 /// Names the fix for the GIPHY failures a user can act on; the key itself is never echoed.
 fn giphy_rejection(status: u16) -> String {
     match status {
@@ -843,14 +852,12 @@ pub async fn search_giphy(
     if query.trim().is_empty() || query.chars().count() > MAX_QUERY_CHARS {
         return Err("Enter a GIPHY search query".to_string());
     }
-    if !matches!(kind.as_str(), "gif" | "sticker") {
-        return Err("Choose GIF or sticker search".to_string());
-    }
+    let path = giphy_search_path(&kind).ok_or("Choose GIF or sticker search")?;
     if offset > 4999 {
         return Err("GIPHY search offset is out of range".to_string());
     }
     let (generation, key, user_id) = capture_giphy_snapshot()?;
-    let endpoint = format!("{GIPHY_API}/{kind}/search");
+    let endpoint = format!("{GIPHY_API}/{path}/search");
     let offset = offset.to_string();
     let response = client()?
         .get(endpoint)
@@ -897,6 +904,13 @@ pub fn open_setup_link(destination: String) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn giphy_search_uses_the_plural_endpoints() {
+        assert_eq!(giphy_search_path("gif"), Some("gifs"));
+        assert_eq!(giphy_search_path("sticker"), Some("stickers"));
+        assert_eq!(giphy_search_path("gifs"), None);
+    }
 
     #[test]
     fn giphy_rejections_name_the_fix() {
