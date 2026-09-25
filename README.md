@@ -11,6 +11,7 @@
 </p>
 
 <p align="center">
+  <a href="#mission">Mission</a> ·
   <a href="#quick-start">Quick start</a> ·
   <a href="#what-you-can-say">What you can say</a> ·
   <a href="#privacy">Privacy</a> ·
@@ -21,6 +22,13 @@
 > **Community preview (0.1.0).** Build it from source today. A signed, notarized installer is not available yet, and real-hardware release checks are still in progress. See [status](#status).
 
 <!-- Add a 30–60 second demo GIF or video here, recorded on a real Mac. -->
+
+## Mission
+
+Online conversation isn’t just a wall of text. We talk in GIFs, stickers, emoji, images, video, voice notes and links, and nearly all of it still means stopping to search, copy and paste. Destroy is building a new way to communicate online, where your voice can reach every one of those forms as easily as it reaches words.
+
+- **Beyond text.** Today you can speak words, emoji, GIFs, stickers, voice notes and file links into any app. Images, video and more expressive formats are where we’re headed next.
+- **Voice next to the keyboard, not instead of it.** The keyboard isn’t going away. Destroy is for the moments you’d rather talk, like at home or anywhere private, and it stays out of the way the rest of the time.
 
 ## Why Destroy
 
@@ -53,8 +61,8 @@ GIFs use your own [GIPHY](https://developers.giphy.com/) key. Drive search uses 
 **Requirements:** macOS 14+, Xcode Command Line Tools, CMake, Rust stable and Node.js 22+.
 
 ```sh
-git clone https://github.com/waseemkhalo/Destroy-Dictation.git
-cd Destroy-Dictation/apps/desktop
+git clone https://github.com/waseemkhalo/OpenDestroy.git
+cd OpenDestroy/apps/desktop
 npm ci
 npm run dev
 ```
