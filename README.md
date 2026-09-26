@@ -100,7 +100,7 @@ In onboarding, choose **Advanced connection** and enter `http://127.0.0.1:8787` 
   - **GIF search:** the search words, plus a random ID generated on your Mac, go to GIPHY with your key.
   - **Drive:** file-name searches go to Google Drive through your Composio project.
   - **Model:** it is downloaded once from Hugging Face.
-- **Clipboard:** to insert text, Destroy briefly puts it on the clipboard, pastes it and then restores what you had copied. Clipboard managers can record it. If pasting isn't possible, the text stays on the clipboard for you to paste.
+- **Clipboard:** to insert text, Destroy briefly puts it on the clipboard, pastes it and then restores what you had copied. That brief copy is marked [transient](http://nspasteboard.org), so clipboard managers that honor the convention (Maccy, Alfred, Raycast, Paste and others) don't record it. If pasting isn't possible, the text stays on the clipboard for you to paste, unmarked.
 - **No actions on your behalf:** Destroy never sends messages or changes file sharing from speech.
 
 Full details: [Privacy](docs/PRIVACY.md) · [Security](SECURITY.md)
