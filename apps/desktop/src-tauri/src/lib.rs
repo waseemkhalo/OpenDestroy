@@ -138,6 +138,11 @@ fn list_audio_input_devices() -> Vec<serde_json::Value> {
     vec![]
 } // WebKit selection owns IDs; native bridge isn't used.
 #[tauri::command]
+fn restart_app(app: tauri::AppHandle) {
+    app.state::<panel_bounds::PanelBounds>().flush();
+    app.restart();
+}
+#[tauri::command]
 fn quit_app(app: tauri::AppHandle) {
     app.state::<panel_bounds::PanelBounds>().flush();
     app.exit(0)
@@ -278,7 +283,8 @@ pub fn run() {
                 updater_available,
                 notch_log,
                 list_audio_input_devices,
-                quit_app
+                quit_app,
+                restart_app
             ];
             handler(invoke)
         })

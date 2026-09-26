@@ -42,6 +42,12 @@ xcrun stapler validate "artifacts/$DESTROY_BASE.dmg"
 hdiutil verify "artifacts/$DESTROY_BASE.dmg"
 # Package the stapled app, then sign this exact updater payload with the NEW updater key.
 tar -czf "artifacts/$DESTROY_BASE.app.tar.gz" -C "$(dirname "$DESTROY_APP")" "OpenDestroy.app"
-(cd apps/desktop && npm run tauri -- signer sign "../../artifacts/$DESTROY_BASE.app.tar.gz")
+# The bundler accepts either key contents or a path in TAURI_SIGNING_PRIVATE_KEY;
+# the standalone signer requires its explicit file option for a path.
+if [ -f "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+  (cd apps/desktop && env -u TAURI_SIGNING_PRIVATE_KEY npm run tauri -- signer sign --private-key-path "$TAURI_SIGNING_PRIVATE_KEY" "../../artifacts/$DESTROY_BASE.app.tar.gz")
+else
+  (cd apps/desktop && npm run tauri -- signer sign "../../artifacts/$DESTROY_BASE.app.tar.gz")
+fi
 (cd artifacts && shasum -a 256 "$DESTROY_BASE.dmg" "$DESTROY_BASE.app.tar.gz" > "$DESTROY_BASE.sha256")
 rm "artifacts/$DESTROY_BASE-notary.zip"

@@ -189,6 +189,8 @@
     "services/backend/src/composer.rs",
     "services/backend/src/main.rs",
     "services/backend/src/storage.rs",
-    "services/backend/src/stream.rs"
+    "services/backend/src/stream.rs",
+    "apps/desktop/src/lib/updater.ts",
+    "apps/desktop/src/lib/updater.test.ts"
   ]
 }
