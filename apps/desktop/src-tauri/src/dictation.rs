@@ -952,6 +952,7 @@ fn write_media_clipboard(
     }
     let _ = pasteboard.setData_forType(Some(&html_data), &html_type);
     let _ = pasteboard.setString_forType(&plain_string, &string_type);
+    crate::clipboard::mark_transient(&pasteboard);
     Ok(())
 }
 
