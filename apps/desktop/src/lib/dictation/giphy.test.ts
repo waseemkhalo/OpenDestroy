@@ -87,6 +87,33 @@ describe("extractDictationMediaIntent", () => {
     });
   });
 
+  it("treats a transcribed \"gift\" as a GIF in command positions", () => {
+    const expected = { kind: "gif", query: "proud reaction", leadingText: "This demo was incredible" };
+    expect(extractDictationMediaIntent("This demo was incredible add a proud reaction gift")).toMatchObject(expected);
+    expect(extractDictationMediaIntent("This demo was incredible. Add a proud reaction gift.")).toMatchObject(expected);
+    expect(extractDictationMediaIntent("Laughing gift.")).toMatchObject({ kind: "gif", query: "Laughing" });
+    expect(extractDictationMediaIntent("Insert a gift of a dancing cat")).toMatchObject({ kind: "gif", query: "a dancing cat" });
+    expect(extractDictationMediaIntent("Reply with a thumbs up gift")).toMatchObject({ kind: "gif", query: "thumbs up" });
+  });
+
+  it("keeps sentences about real gifts as dictation", () => {
+    for (const text of [
+      "I bought her a gift",
+      "Thanks for the gift",
+      "Nice gift!",
+      "Birthday gift",
+      "Don't forget to add a birthday gift",
+      "Add a gift card",
+      "Add a small gift",
+      "Add my gift",
+      "We should send a gift",
+      "Get me a gift for Christmas",
+      "Can you add a gift receipt",
+    ]) {
+      expect(extractDictationMediaIntent(text), text).toBeNull();
+    }
+  });
+
   it("accepts a short verbless request as the whole utterance", () => {
     expect(extractDictationMediaIntent("Laughing GIF.")).toMatchObject({ kind: "gif", query: "Laughing", leadingText: "" });
     expect(extractDictationMediaIntent("funny cat gif")).toMatchObject({ kind: "gif", query: "funny cat" });

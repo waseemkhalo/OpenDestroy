@@ -2,6 +2,31 @@
 
 This is an independently extracted source candidate, not a shipped installer.
 
+## September 25: public source, owner hardware checks, first hosted CI
+
+The owner made the repository public (now `waseemkhalo/OpenDestroy`). The
+source preview is published; no installer is.
+
+The owner reports these results on their own Mac. The macOS version and chip
+were not recorded.
+
+| Check | Owner-reported result |
+|---|---|
+| Local on-device dictation into another app | Works |
+| GIF search with a personal GIPHY key, shown in the notch | Works after #3 (route and error display), #4 (plural GIPHY endpoints) and #6 (grammar) |
+| Main window layering | Goes behind other apps after #6; only the notch floats |
+
+Hosted CI ran for the first time once the repository was public. It had
+never started while the repository was private. Run `36201996844` on #6
+(head `6cba6f1`) passed on `macos-14`: frontend check, tests and build; the
+locked Rust workspace tests; backend build and HTTP smoke; formatting;
+Python tests; and the publication audit. `backend-linux` passed too. The
+publication audit passes after the owner-approved asset decisions in #2.
+
+Still not verified: signed and notarized installation and updates, the
+editor matrix beyond the owner's use, live Google Drive/Composio lookup,
+and provider-backed rewrite through the self-hosted service.
+
 ## September 24: private candidate and release preparation
 
 The owner reports that actual dictation has been tested and works. This is
