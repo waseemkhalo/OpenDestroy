@@ -295,6 +295,7 @@ pub(crate) fn selected_model_id() -> String {
 
 pub(crate) fn select_model(id: &str) -> Result<(), String> {
     let model = find_model(id).ok_or("Unknown local speech model")?;
+    require_supported_engine(model)?;
     if let Ok(state) = download_state().lock() {
         if state.active.is_some() {
             return Err("Finish or cancel the active model download first".into());
@@ -336,6 +337,9 @@ fn artifact_path(root: &Path, model: &ModelSpec, artifact: &Artifact) -> PathBuf
 }
 
 fn installed_unlocked(model: &ModelSpec) -> bool {
+    if require_supported_engine(model).is_err() {
+        return false;
+    }
     let root = model_path(model);
     if model.engine == ModelEngine::Parakeet && !root.join(".destroy-managed-model").is_file() {
         return false;
@@ -542,6 +546,21 @@ fn available_bytes() -> Option<u64> {
     None
 }
 
+fn engine_supported_on_arch(engine: ModelEngine, architecture: &str) -> bool {
+    engine != ModelEngine::Parakeet || architecture == "aarch64"
+}
+
+fn require_supported_engine(model: &ModelSpec) -> Result<(), String> {
+    if engine_supported_on_arch(model.engine, std::env::consts::ARCH) {
+        Ok(())
+    } else {
+        Err(
+            "Parakeet requires Apple Silicon in this release. Choose Whisper or cloud speech."
+                .into(),
+        )
+    }
+}
+
 fn model_status(model: &ModelSpec) -> PublicModel {
     PublicModel {
         id: model.id.to_owned(),
@@ -554,17 +573,18 @@ fn model_status(model: &ModelSpec) -> PublicModel {
         language: model.language.to_owned(),
         download_bytes: model_total(model),
         installed: installed(model),
-        supported: model.engine != ModelEngine::Parakeet
-            || model
-                .artifacts
-                .iter()
-                .all(|artifact| artifact.sha256.len() == 64),
-        unavailable_reason: (model.engine == ModelEngine::Parakeet
+        supported: require_supported_engine(model).is_ok()
             && model
                 .artifacts
                 .iter()
-                .any(|artifact| artifact.sha256.len() != 64))
-        .then(|| "Pinned verification metadata for this model is incomplete".to_owned()),
+                .all(|artifact| artifact.sha256.len() == 64),
+        unavailable_reason: require_supported_engine(model).err().or_else(|| {
+            model
+                .artifacts
+                .iter()
+                .any(|artifact| artifact.sha256.len() != 64)
+                .then(|| "Pinned verification metadata for this model is incomplete".to_owned())
+        }),
     }
 }
 
@@ -876,6 +896,7 @@ fn finish_download(generation: u64, result: Result<(), String>) {
 pub(crate) fn begin_download(model_id: Option<String>) -> Result<(), String> {
     let id = model_id.unwrap_or_else(selected_model_id_unchecked);
     let model = *find_model(&id).ok_or("Unknown local speech model")?;
+    require_supported_engine(&model)?;
     if model.engine == ModelEngine::Parakeet
         && model
             .artifacts
@@ -950,6 +971,26 @@ mod tests {
             assert!(find_model(id).is_none());
         }
         assert!(find_model(DEFAULT_MODEL_ID).is_some());
+    }
+
+    #[test]
+    fn intel_keeps_whisper_but_cannot_select_or_download_parakeet() {
+        assert!(engine_supported_on_arch(ModelEngine::Whisper, "x86_64"));
+        assert!(!engine_supported_on_arch(ModelEngine::Parakeet, "x86_64"));
+        assert!(engine_supported_on_arch(ModelEngine::Parakeet, "aarch64"));
+        let model = find_model("parakeet-tdt-0.6b-v3").unwrap();
+        let status = model_status(model);
+        assert_eq!(status.supported, cfg!(target_arch = "aarch64"));
+        #[cfg(not(target_arch = "aarch64"))]
+        {
+            assert!(status.unavailable_reason.unwrap().contains("Apple Silicon"));
+            assert!(select_model(model.id)
+                .unwrap_err()
+                .contains("Apple Silicon"));
+            assert!(begin_download(Some(model.id.to_owned()))
+                .unwrap_err()
+                .contains("Apple Silicon"));
+        }
     }
 
     #[test]

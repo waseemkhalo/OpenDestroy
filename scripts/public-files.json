@@ -191,6 +191,7 @@
     "services/backend/src/storage.rs",
     "services/backend/src/stream.rs",
     "apps/desktop/src/lib/updater.ts",
-    "apps/desktop/src/lib/updater.test.ts"
+    "apps/desktop/src/lib/updater.test.ts",
+    "apps/desktop/src-tauri/src/parakeet_unavailable.rs"
   ]
 }

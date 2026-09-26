@@ -12,6 +12,10 @@ mod integrations;
 mod local_models;
 mod native_audio;
 mod panel_bounds;
+#[cfg(target_arch = "aarch64")]
+mod parakeet;
+#[cfg(not(target_arch = "aarch64"))]
+#[path = "parakeet_unavailable.rs"]
 mod parakeet;
 mod permissions;
 mod public_setup;
