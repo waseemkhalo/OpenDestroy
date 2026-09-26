@@ -7,6 +7,7 @@
   "scripts": {
     "dev": "node scripts/tauri.mjs dev",
     "build": "vite build",
+    "icons": "node scripts/generate-icons.mjs",
     "check": "svelte-check --tsconfig ./tsconfig.json",
     "test": "vitest run",
     "tauri": "node scripts/tauri.mjs",
