@@ -2,7 +2,7 @@
   <img src="apps/desktop/public/art/voice-ink.png" alt="A red sun over ink-wash mountains" width="720">
 </p>
 
-<h1 align="center">Destroy Dictation</h1>
+<h1 align="center">OpenDestroy</h1>
 
 <p align="center">
   <b>Your voice, in ink.</b><br>

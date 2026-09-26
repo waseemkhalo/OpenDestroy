@@ -540,11 +540,16 @@ pub fn same_dictation_field(left: &DictationFocusTarget, right: &DictationFocusT
 }
 
 fn is_own_app(fields: &FocusFields) -> bool {
+    // The bundle ID is authoritative; names cover builds before the rename too.
     crate::app_identity::is_own_bundle_id(&fields.bundle_id)
-        || fields.app_name.eq_ignore_ascii_case("Destroy Dictation")
-        || fields
-            .app_name
-            .eq_ignore_ascii_case("Destroy Dictation Dev")
+        || [
+            "OpenDestroy",
+            "OpenDestroy Dev",
+            "Destroy Dictation",
+            "Destroy Dictation Dev",
+        ]
+        .iter()
+        .any(|name| fields.app_name.eq_ignore_ascii_case(name))
 }
 
 fn is_password_field(fields: &FocusFields) -> bool {
@@ -707,7 +712,7 @@ mod tests {
     fn rejects_own_app_focused_field() {
         let result = classify_focus_fields(&sample(
             "org.destroy.dictation.community",
-            "Destroy Dictation",
+            "OpenDestroy",
             "AXTextArea",
             "notes",
         ));
@@ -716,11 +721,15 @@ mod tests {
 
         let dev = classify_focus_fields(&sample(
             "org.destroy.dictation.community.dev",
-            "Destroy Dictation Dev",
+            "OpenDestroy Dev",
             "AXTextArea",
             "notes",
         ));
         assert_eq!(dev.delivery, DraftDelivery::Notch);
+
+        // A copy installed before the rename is still excluded by name.
+        let legacy = classify_focus_fields(&sample("", "Destroy Dictation", "AXTextArea", "notes"));
+        assert_eq!(legacy.delivery, DraftDelivery::Notch);
     }
 
     #[test]
@@ -769,7 +778,7 @@ mod tests {
     fn dictation_rejects_own_app_and_secure_fields() {
         let own_app = sample(
             "org.destroy.dictation.community",
-            "Destroy Dictation",
+            "OpenDestroy",
             "AXTextArea",
             "",
         );
@@ -777,7 +786,7 @@ mod tests {
 
         let own_app_dev = sample(
             "org.destroy.dictation.community.dev",
-            "Destroy Dictation Dev",
+            "OpenDestroy Dev",
             "AXTextArea",
             "",
         );

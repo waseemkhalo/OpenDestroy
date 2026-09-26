@@ -19,10 +19,10 @@ class ReleaseTests(unittest.TestCase):
             self.assertNotEqual(self.metadata(folder).returncode, 0)
             self.assertFalse((root/'latest.json').exists())
             for target in ['aarch64-apple-darwin', 'x86_64-apple-darwin']:
-                name = 'DestroyDictation_0.1.0_' + target
+                name = 'OpenDestroy_0.1.0_' + target
                 for suffix in ['.dmg', '.app.tar.gz', '.app.tar.gz.sig']:
                     (root/(name+suffix)).write_text('test artifact')
-            sig = root/'DestroyDictation_0.1.0_x86_64-apple-darwin.app.tar.gz.sig'
+            sig = root/'OpenDestroy_0.1.0_x86_64-apple-darwin.app.tar.gz.sig'
             sig.write_text('  ')
             self.assertNotEqual(self.metadata(folder).returncode, 0)
             self.assertFalse((root/'latest.json').exists())
@@ -32,7 +32,7 @@ class ReleaseTests(unittest.TestCase):
             self.assertEqual(set(metadata['platforms']), {'darwin-aarch64', 'darwin-x86_64'})
             downloads = json.loads((root/'release.json').read_text())['downloads']
             self.assertEqual(len(downloads), 2)
-            self.assertTrue(all('/releases/download/v0.1.0/DestroyDictation_' in item['url'] for item in downloads))
+            self.assertTrue(all('/releases/download/v0.1.0/OpenDestroy_' in item['url'] for item in downloads))
 
     def test_release_configuration_fails_without_secrets(self):
         env = {k:v for k,v in os.environ.items() if k not in REQUIRED}

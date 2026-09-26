@@ -42,7 +42,7 @@
  const dateLabel=(timestamp:number)=>new Date(timestamp).toLocaleString(undefined,{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
 </script>
 
-<section class="daily-ink" aria-label="Destroy Dictation home">
+<section class="daily-ink" aria-label="OpenDestroy home">
  <aside class="sidebar">
   <div class="brand" data-tauri-drag-region><span>DESTROY</span></div>
   <nav aria-label="Main navigation">
