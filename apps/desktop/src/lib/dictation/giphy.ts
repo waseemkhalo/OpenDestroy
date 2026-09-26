@@ -161,6 +161,39 @@ function standaloneIntent(input: string): RegExpExecArray | null {
   return match && !SENTENCE_START.test(first) ? match : null;
 }
 
+/**
+ * Speech models often write a spoken "gif" as "gift", which is also a real
+ * word. It counts only in command positions (after an insertion verb, or as a
+ * short standalone request) and never when the words around it describe an
+ * actual gift ("I bought her a gift", "don't forget to add a birthday gift").
+ */
+const GIFT = "(?<kind>gift)s?";
+const GIFT_VERB =
+  "(?:add|insert|paste|drop|use|reply\\s+with|respond\\s+with|throw\\s+in|pull\\s+up)";
+const GIFT_KIND_FIRST = new RegExp(
+  `^${LEADING}(?:please\\s+)?${GIFT_VERB}\\s+(?:me\\s+)?(?:a|an|some)?\\s*${GIFT}${KIND_BREAK}\\s+(?:of|that\\s+says)\\s+(?<query>.+?)[.!?]*$`,
+  "iu",
+);
+const GIFT_QUERY_FIRST = new RegExp(
+  `^${LEADING}(?:please\\s+)?${GIFT_VERB}\\s+(?:me\\s+)?(?:(?:a|an|some)\\s+)?(?<query>.+?)\\s+${GIFT}[.!?]*$`,
+  "iu",
+);
+const GIFT_STANDALONE = new RegExp(
+  `^(?:please\\s+)?(?:(?:a|an|some)\\s+)?(?<query>\\S+(?:\\s+\\S+){0,2})\\s+${GIFT}[.!?]*$`,
+  "iu",
+);
+const REAL_GIFT =
+  /\b(?:birthday|christmas|xmas|holiday|wedding|anniversary|graduation|housewarming|baby|shower|thank|thanks|farewell|retirement|santa|small|little|nice|big|free|perfect|special|surprise|card|cards|receipt|wrap|wrapping|bag|box|basket|certificate|registry|idea|ideas|shop|her|him|them|mom|dad)\b/iu;
+
+function giftIntent(input: string): RegExpExecArray | null {
+  const match = GIFT_KIND_FIRST.exec(input) ?? GIFT_QUERY_FIRST.exec(input) ?? GIFT_STANDALONE.exec(input);
+  const query = match?.groups?.query?.trim() ?? "";
+  const first = query.split(/\s+/u)[0] ?? "";
+  if (!match || REAL_GIFT.test(query) || SENTENCE_START.test(first)) return null;
+  if (/\bto$/iu.test((match.groups?.leading ?? "").trim())) return null;
+  return match;
+}
+
 function trimQuery(value: string): string {
   return value.trim().replace(/^[“”"']+|[“”"']+$/gu, "").trim();
 }
@@ -185,7 +218,11 @@ function stripRequestScaffolding(value: string): string {
 export function extractDictationMediaIntent(transcript: string): DictationMediaIntent | null {
   const input = transcript.trim();
   const match =
-    KIND_FIRST.exec(input) ?? QUERY_FIRST.exec(input) ?? BARE_KIND.exec(input) ?? standaloneIntent(input);
+    KIND_FIRST.exec(input) ??
+    QUERY_FIRST.exec(input) ??
+    BARE_KIND.exec(input) ??
+    standaloneIntent(input) ??
+    giftIntent(input);
   if (!match?.groups) return null;
   const query = trimQuery(match.groups.query ?? "");
   if (!query || [...query].length > 50) return null;
