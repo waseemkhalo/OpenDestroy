@@ -92,10 +92,15 @@ In onboarding, choose **Advanced connection** and enter `http://127.0.0.1:8787` 
 
 ## Privacy
 
-- **On this Mac:** audio is transcribed in-process and never leaves your machine.
-- **Your own key:** audio goes only to the provider you chose, billed to your account.
-- **Transient data:** raw recordings and selected text are not kept. Recent transcripts live in memory for the session.
-- **Local storage:** only settings, vocabulary, snippets, saved links, favorites and daily word counts are stored. You can export or delete them from Settings.
+- **On this Mac:** audio is transcribed in-process and never leaves your machine. There is no fallback to a cloud provider, and no analytics or telemetry.
+- **Your own key:** audio goes only to the provider you chose (OpenAI or Gemini), billed to your account.
+- **Transient data:** raw recordings and selected text are not kept. Recent transcripts live in memory for the session. A voice note is written to a temporary file for the app you hand it to and deleted after 10 minutes.
+- **Local storage:** only settings, vocabulary, snippets, saved links, favorites and daily word and speaking-time counts are stored, never transcript text. You can export or delete them from Settings.
+- **Optional connections send only what they need:**
+  - **GIF search:** the search words, plus a random ID generated on your Mac, go to GIPHY with your key.
+  - **Drive:** file-name searches go to Google Drive through your Composio project.
+  - **Model:** it is downloaded once from Hugging Face.
+- **Clipboard:** to insert text, Destroy briefly puts it on the clipboard, pastes it and then restores what you had copied. Clipboard managers can record it. If pasting isn't possible, the text stays on the clipboard for you to paste.
 - **No actions on your behalf:** Destroy never sends messages or changes file sharing from speech.
 
 Full details: [Privacy](docs/PRIVACY.md) · [Security](SECURITY.md)
