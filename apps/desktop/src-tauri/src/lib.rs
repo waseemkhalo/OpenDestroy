@@ -283,7 +283,7 @@ pub fn run() {
             handler(invoke)
         })
         .build(tauri::generate_context!())
-        .expect("Cannot start Destroy Dictation")
+        .expect("Cannot start OpenDestroy")
         .run(|app, event| {
             #[cfg(target_os = "macos")]
             if matches!(&event, tauri::RunEvent::Reopen { .. }) {

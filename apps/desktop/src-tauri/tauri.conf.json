@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Destroy Dictation",
+  "productName": "OpenDestroy",
   "version": "0.1.0",
   "identifier": "org.destroy.dictation.community",
   "build": {
@@ -14,7 +14,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "Destroy Dictation",
+        "title": "OpenDestroy",
         "width": 1180,
         "height": 820,
         "decorations": true,
@@ -31,7 +31,7 @@
       },
       {
         "label": "dictation-hud",
-        "title": "Destroy Dictation status",
+        "title": "OpenDestroy status",
         "width": 338,
         "height": 34,
         "decorations": false,

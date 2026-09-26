@@ -95,4 +95,4 @@ jobs:
           set -euo pipefail
           VERSION="$(python3 -c 'import json;print(json.load(open("apps/desktop/package.json"))["version"])')"
           python3 scripts/release-metadata.py --repo "$REPOSITORY" --version "$VERSION"
-          gh release create "v$VERSION" artifacts/* --repo "$REPOSITORY" --target "$RELEASE_COMMIT" --draft --title "Destroy Dictation $VERSION" --notes-file docs/RELEASE_NOTES.md
+          gh release create "v$VERSION" artifacts/* --repo "$REPOSITORY" --target "$RELEASE_COMMIT" --draft --title "OpenDestroy $VERSION" --notes-file docs/RELEASE_NOTES.md

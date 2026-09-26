@@ -1,4 +1,4 @@
-# Destroy Dictation desktop
+# OpenDestroy desktop
 
 This is the native community Mac app, with dictation settings and a separate recording HUD.
 
@@ -13,7 +13,7 @@ npm run dev
 
 Connect the localhost backend and its generated access token in **Connection & device**. The access token goes in macOS Keychain; provider API keys stay with the backend. Grant microphone and Accessibility access when you choose to use dictation. Hold the configured shortcut while editing a field in another app, then release to finish.
 
-The settings window retains your position and size. Recording uses a separate, non-focusable HUD, with the waveform on the left and destination icon on the right. Closing settings hides the window; reopening the application restores it. Use **Quit Destroy Dictation** to stop the app.
+The settings window retains your position and size. Recording uses a separate, non-focusable HUD, with the waveform on the left and destination icon on the right. Closing settings hides the window; reopening the application restores it. Use **Quit OpenDestroy** to stop the app.
 
 Release identity: `org.destroy.dictation.community`; development identity: `org.destroy.dictation.community.dev`. These identities, Keychain services and temporary recording directories are separate from other Destroy installations. If another app uses the default shortcut, choose a different one here.
 
