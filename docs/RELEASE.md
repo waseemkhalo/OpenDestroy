@@ -17,7 +17,7 @@ Before the first publication, review the exact commit and its archive, not a wor
 
 Production uses `org.destroy.dictation.community`; development uses `org.destroy.dictation.community.dev`. Each has its own app-support and Keychain namespace. Confirm these identifiers before a first public install; later changes need a migration plan.
 
-The production product name is `Destroy Dictation`. The release package names are `DestroyDictation_VERSION_TARGET`. Supported build targets are `aarch64-apple-darwin` and `x86_64-apple-darwin`, with macOS 14.0 minimum. Do not claim an untested architecture is verified.
+The production product name is `OpenDestroy` (renamed from Destroy Dictation before the first signed release; the bundle identifiers are unchanged). The release package names are `OpenDestroy_VERSION_TARGET`. Supported build targets are `aarch64-apple-darwin` and `x86_64-apple-darwin`, with macOS 14.0 minimum. Do not claim an untested architecture is verified.
 
 ## Signed installer candidate
 

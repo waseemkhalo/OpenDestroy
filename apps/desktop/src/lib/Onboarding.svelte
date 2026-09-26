@@ -128,7 +128,7 @@
 </script>
 
 
-<section class="onboarding" aria-label="Destroy Dictation setup">
+<section class="onboarding" aria-label="OpenDestroy setup">
   <!-- Same ink language as Home: painted landscape on the right, editorial type on the left. -->
   <div class="ink-backdrop" aria-hidden="true"></div>
 

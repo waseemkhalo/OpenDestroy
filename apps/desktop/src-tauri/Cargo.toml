@@ -1,6 +1,6 @@
 [package]
 name = "destroy-desktop"
-description = "Destroy Dictation — community dictation app"
+description = "OpenDestroy — community dictation app"
 version.workspace = true
 edition.workspace = true
 

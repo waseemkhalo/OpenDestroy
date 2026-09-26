@@ -1,4 +1,4 @@
-# Destroy Dictation 0.1.0 — community preview
+# OpenDestroy 0.1.0 — community preview
 
 An independent native Mac app for voice dictation, voice notes, emoji/media selection and saved file-link insertion, with a self-hosted provider relay and personal writing settings.
 
