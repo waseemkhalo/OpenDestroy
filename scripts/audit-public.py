@@ -30,6 +30,9 @@ PUBLIC_BINARY_PATHS = {
     'apps/desktop/src-tauri/icons/icon.png',
     'apps/desktop/src-tauri/icons/icon.icns',
     'apps/desktop/src-tauri/icons/icon.ico',
+    # DMG window background: the owner-approved settings-landscape-v2.png artwork
+    # with the OpenDestroy wordmark in Cormorant (added by the owner in #12).
+    'apps/desktop/src-tauri/icons/dmg-background.png',
     'apps/desktop/public/art/command-surface.png',
     'apps/desktop/public/art/selection-brush.png',
     'apps/desktop/public/art/settings-landscape-v2.png',

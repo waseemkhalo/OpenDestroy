@@ -31,6 +31,12 @@ class PackageMacOSTests(unittest.TestCase):
         self.assertIn('OpenDestroy_${DESTROY_VERSION}_${DESTROY_TARGET%%-*}.dmg', script)
         self.assertIn('ditto "$DESTROY_DMG_ROOT/OpenDestroy.app" "$DESTROY_APP"', script)
         self.assertNotIn('hdiutil create', script)
+        # The DMG-only bundle rebuilds an unsigned .app; the notarized, stapled
+        # app must replace it inside the image before the DMG is signed.
+        swap = script.index('ditto "$DESTROY_DMG_ROOT/OpenDestroy.app" "$DESTROY_MOUNT/OpenDestroy.app"')
+        self.assertLess(script.index('--bundles dmg --no-sign'), swap)
+        self.assertLess(swap, script.index('xcrun stapler validate "$DESTROY_MOUNT/OpenDestroy.app"'))
+        self.assertLess(swap, script.index('codesign --force --sign "$APPLE_SIGNING_IDENTITY" --timestamp "artifacts/$DESTROY_BASE.dmg"'))
 
     def run_package(self, target_dir, team='TESTTEAM', npm_status=77):
         with tempfile.TemporaryDirectory() as folder:

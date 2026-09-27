@@ -31,7 +31,11 @@ xcrun stapler staple "$DESTROY_APP"
 xcrun stapler validate "$DESTROY_APP"
 spctl --assess --type execute --verbose=2 "$DESTROY_APP"
 DESTROY_DMG_ROOT="$(mktemp -d -t destroy-dmg)"
+DESTROY_MOUNT="$DESTROY_DMG_ROOT/mount"
 restore_stapled_app() {
+  if [ -d "$DESTROY_MOUNT" ]; then
+    hdiutil detach "$DESTROY_MOUNT" -force >/dev/null 2>&1 || true
+  fi
   if [ -d "$DESTROY_DMG_ROOT/OpenDestroy.app" ] && [ ! -d "$DESTROY_APP" ]; then
     ditto "$DESTROY_DMG_ROOT/OpenDestroy.app" "$DESTROY_APP"
   fi
@@ -50,7 +54,22 @@ if [ ! -f "$DESTROY_BUNDLED_DMG" ]; then
   exit 1
 fi
 ditto "$DESTROY_DMG_ROOT/OpenDestroy.app" "$DESTROY_APP"
-mv "$DESTROY_BUNDLED_DMG" "artifacts/$DESTROY_BASE.dmg"
+# A DMG-only bundle run rebuilds the .app (tauri-bundler dmg::bundle_project),
+# so with --no-sign the styled image holds an unsigned copy that notarization
+# rejects. Swap in the notarized, stapled app, keeping the Finder layout.
+DESTROY_RW_DMG="$DESTROY_DMG_ROOT/OpenDestroy-rw.dmg"
+DESTROY_APP_MB="$(du -sm "$DESTROY_DMG_ROOT/OpenDestroy.app" | cut -f1)"
+hdiutil convert "$DESTROY_BUNDLED_DMG" -format UDRW -o "$DESTROY_RW_DMG"
+hdiutil resize -size "$((DESTROY_APP_MB * 2 + 64))m" "$DESTROY_RW_DMG"
+mkdir -p "$DESTROY_MOUNT"
+hdiutil attach "$DESTROY_RW_DMG" -readwrite -nobrowse -noverify -noautoopen -mountpoint "$DESTROY_MOUNT"
+rm -rf "$DESTROY_MOUNT/OpenDestroy.app"
+ditto "$DESTROY_DMG_ROOT/OpenDestroy.app" "$DESTROY_MOUNT/OpenDestroy.app"
+codesign --verify --deep --strict "$DESTROY_MOUNT/OpenDestroy.app"
+xcrun stapler validate "$DESTROY_MOUNT/OpenDestroy.app"
+hdiutil detach "$DESTROY_MOUNT"
+rm -f "$DESTROY_BUNDLED_DMG"
+hdiutil convert "$DESTROY_RW_DMG" -format UDZO -imagekey zlib-level=9 -o "artifacts/$DESTROY_BASE.dmg"
 codesign --force --sign "$APPLE_SIGNING_IDENTITY" --timestamp "artifacts/$DESTROY_BASE.dmg"
 xcrun notarytool submit "artifacts/$DESTROY_BASE.dmg" --keychain-profile "$APPLE_NOTARY_PROFILE" --wait
 xcrun stapler staple "artifacts/$DESTROY_BASE.dmg"
