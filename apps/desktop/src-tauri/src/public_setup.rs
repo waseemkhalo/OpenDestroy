@@ -1362,8 +1362,7 @@ mod tests {
         );
         assert_eq!(local_model_readiness_error(None, false, false), None);
         assert_eq!(
-            local_model_readiness_error(Some("Download failed".into()), true, false)
-                .as_deref(),
+            local_model_readiness_error(Some("Download failed".into()), true, false).as_deref(),
             Some("Download failed")
         );
     }
