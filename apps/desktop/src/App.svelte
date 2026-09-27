@@ -27,7 +27,7 @@
  import Settings from './lib/Settings.svelte';
  import SettingsConnections from './lib/SettingsConnections.svelte';
  import {searchDirectGiphy} from './lib/dictation/giphy';
- import {isBasicDictationReady,isSpeechProviderReady,usesNativeBatch,type PublicSpeechStatus} from './lib/publicSetup';
+ import {isBasicDictationReady,isSpeechProviderReady,onboardingContinueIssue,usesNativeBatch,type PublicSpeechStatus} from './lib/publicSetup';
  import {emptyPublicLocalModels,type PublicLocalModels} from './lib/localModels';
  import {clearScopedLocalStorage,localResetSucceeded} from './lib/appIntegration';
  type Target={canPaste:boolean;appName:string;bundleId:string;appKind:string;appIconDataUrl?:string};
@@ -211,13 +211,14 @@
   if(appDisposed)return false;
   applySpeechStatus(next);permissions=grants;return true;
  }
- async function continueOnboarding(){
-  if(!native){onboardingStep=Math.min(2,onboardingStep+1);return;}
-  try{if(!await refreshSetupReadiness())return;}catch(e){fail(e);return;}
-  if(onboardingStep===0&&!isSpeechProviderReady(speech)){message='Choose a provider and finish its setup before continuing.';return;}
-  if(onboardingStep===1&&!speech.ready){message='Finish speech setup first.';onboardingStep=0;return;}
-  if(onboardingStep===1&&!permissions.microphone){message='Allow the microphone before continuing.';return;}
+ async function continueOnboarding():Promise<string|null>{
+  if(!native){onboardingStep=Math.min(2,onboardingStep+1);return null;}
+  try{if(!await refreshSetupReadiness())return 'Setup could not be checked. Try again.';}catch(e){fail(e);return 'Setup could not be checked. Try again.';}
+  const issue=onboardingContinueIssue(onboardingStep,speech,permissions.microphone);
+  if(issue){message=issue;if(onboardingStep===1&&!speech.ready)onboardingStep=0;return issue;}
+  message='';
   onboardingStep=Math.min(2,onboardingStep+1);
+  return null;
  }
  async function finishOnboarding(){if(!native)return nativeOnly();try{if(!await refreshSetupReadiness())return;}catch(e){fail(e);return;}if(!basicReady){message='Speech and microphone setup are required before basic dictation is ready.';return;}onboardingForced=false;onboarding=false;settingsOpen=false;tab='dictation';message='';await loadExtras().catch(fail);}
  async function connect(){

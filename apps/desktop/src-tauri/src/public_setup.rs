@@ -252,6 +252,18 @@ fn model_ready() -> bool {
     crate::local_models::selected_model_ready()
 }
 
+fn local_model_readiness_error(
+    download_error: Option<String>,
+    model_installed: bool,
+    model_ready: bool,
+) -> Option<String> {
+    download_error.or_else(|| {
+        (!model_ready && model_installed).then(|| {
+            "The selected local model is present but failed integrity or runtime validation. Remove it and download it again, or select another model.".to_owned()
+        })
+    })
+}
+
 fn setup_status(provider: Option<SpeechProvider>, current_key: Option<&str>) -> PublicSetupStatus {
     let local_model_ready = model_ready();
     let local_models = crate::local_models::status();
@@ -271,7 +283,13 @@ fn setup_status(provider: Option<SpeechProvider>, current_key: Option<&str>) -> 
     // status object made a failed optional local download look like a failed
     // cloud provider during startup.
     let error = (provider == Some(SpeechProvider::Local))
-        .then_some(local_models.error.clone())
+        .then(|| {
+            local_model_readiness_error(
+                local_models.error.clone(),
+                crate::local_models::selected_model_installed(),
+                local_model_ready,
+            )
+        })
         .flatten();
     let local_model_id = local_models.selected_model_id;
     PublicSetupStatus {
@@ -1333,5 +1351,20 @@ mod tests {
         assert!(value.get("modelDownloading").is_some());
         assert!(value.get("modelReady").is_some());
         assert_eq!(value["provider"], "local");
+    }
+
+    #[test]
+    fn installed_but_unloadable_model_explains_why_onboarding_is_blocked() {
+        let issue = local_model_readiness_error(None, true, false);
+        assert_eq!(
+            issue.as_deref(),
+            Some("The selected local model is present but failed integrity or runtime validation. Remove it and download it again, or select another model.")
+        );
+        assert_eq!(local_model_readiness_error(None, false, false), None);
+        assert_eq!(
+            local_model_readiness_error(Some("Download failed".into()), true, false)
+                .as_deref(),
+            Some("Download failed")
+        );
     }
 }

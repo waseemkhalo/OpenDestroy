@@ -60,7 +60,13 @@
     "macOS": {
       "minimumSystemVersion": "14.0",
       "entitlements": "Entitlements.plist",
-      "infoPlist": "Info.plist"
+      "infoPlist": "Info.plist",
+      "dmg": {
+        "background": "icons/dmg-background.png",
+        "windowSize": { "width": 900, "height": 600 },
+        "appPosition": { "x": 220, "y": 345 },
+        "applicationFolderPosition": { "x": 680, "y": 345 }
+      }
     },
     "icon": [
       "icons/icon.png"
