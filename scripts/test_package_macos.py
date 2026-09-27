@@ -1,5 +1,7 @@
 """Offline packaging regressions: all build/sign/upload commands are mocked."""
 import os
+import json
+import struct
 from pathlib import Path
 import shutil
 import subprocess
@@ -10,6 +12,26 @@ ROOT = Path(__file__).resolve().parent.parent
 
 
 class PackageMacOSTests(unittest.TestCase):
+    def test_release_build_uses_the_custom_open_destroy_dmg_layout(self):
+        config_path = ROOT / 'apps/desktop/src-tauri/tauri.conf.json'
+        config = json.loads(config_path.read_text())
+        dmg = config['bundle']['macOS']['dmg']
+        background = config_path.parent / dmg['background']
+        self.assertTrue(background.is_file())
+        with background.open('rb') as image:
+            image.seek(16)
+            self.assertEqual(struct.unpack('>II', image.read(8)), (1800, 1200))
+        self.assertEqual(dmg['windowSize'], {'width': 900, 'height': 600})
+        self.assertEqual(dmg['appPosition'], {'x': 220, 'y': 345})
+        self.assertEqual(dmg['applicationFolderPosition'], {'x': 680, 'y': 345})
+
+        script = (ROOT / 'scripts/package-macos.sh').read_text()
+        self.assertIn('npm run tauri -- bundle --target "$DESTROY_TARGET" --bundles dmg --no-sign', script)
+        self.assertIn('release/bundle/dmg', script)
+        self.assertIn('OpenDestroy_${DESTROY_VERSION}_${DESTROY_TARGET%%-*}.dmg', script)
+        self.assertIn('ditto "$DESTROY_DMG_ROOT/OpenDestroy.app" "$DESTROY_APP"', script)
+        self.assertNotIn('hdiutil create', script)
+
     def run_package(self, target_dir, team='TESTTEAM', npm_status=77):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)
