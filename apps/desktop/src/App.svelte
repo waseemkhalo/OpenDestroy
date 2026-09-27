@@ -5,7 +5,8 @@
  function panelMotion(node:Element){return fly(node,{x:node.getBoundingClientRect().width,duration:window.matchMedia('(prefers-reduced-motion: reduce)').matches?0:360,easing:cubicOut});}
  import {initialHud,sanitizeHudSnapshot,runOwnedHudAction,currentHudAction,deliveryHudFeedback,type HudAction} from './lib/notch/hud';
  const native=typeof window!=='undefined'&&'__TAURI_INTERNALS__' in window;
- import {check,type Update} from '@tauri-apps/plugin-updater';
+ import {check} from '@tauri-apps/plugin-updater';
+ import {createUpdater,type UpdateState} from './lib/updater';
  import {invoke} from '@tauri-apps/api/core';
  import {listen} from '@tauri-apps/api/event';
  import {setAccount} from './lib/account';
@@ -57,7 +58,9 @@
  let micTestLevel=$state(0),micTesting=$state(false),micTestStream:MediaStream|null=null,micTestContext:AudioContext|null=null,micTestSource:MediaStreamAudioSourceNode|null=null,micTestTimer:ReturnType<typeof setTimeout>|undefined,micTestGeneration=0;
  let emoji=$state<DictationEmojiChoice[]>([]),media=$state<DictationMediaResult[]>([]),links=$state<Link[]>([]),leading=$state(''),query=$state(''),kind=$state<DictationMediaKind>('gif'),page=$state(0),busy=$state(false),voiceReady=$state(false),mediaOpen=$state(false),driveSearch=$state(false),giphyDirect=$state(false);
  let updatesEnabled=$state(false);
- let favorites=$state<{id:string;title:string}[]>([]),update=$state<Update|null>(null),updateMessage=$state('No update feed configured for this community build.');
+ let favorites=$state<{id:string;title:string}[]>([]);
+ let updateBusy=$state(false),updateState=$state<UpdateState>({phase:'idle',message:'Check for a signed OpenDestroy update.'});
+ const updater=createUpdater({check:()=>check({timeout:15000}),restart:()=>invoke('restart_app'),busy:()=>localCaptureBusy||localModelBusy||resetBusy||connecting||speech.modelDownloading===true,lock:value=>updateBusy=value,changed:value=>updateState=value});
  let vars=$state('{}'),linksJson=$state('[]'),deleteConfirm=$state(false),remoteDeleteConfirm=$state(false),removeInstalledModels=$state(false),resetBusy=$state(false),resetAction=0,pendingLocalReset=false,connecting=$state(false);
  let onboarding=$state(true),onboardingStep=$state(0),settingsOpen=$state(false),onboardingForced=false,selectedProvider=$state<SpeechProvider>('local'),speechKey=$state(''),composioKey=$state(''),giphyKey=$state('');
  let speech=$state<SpeechStatus>({provider:null,ready:false,modelReady:false,openaiKeyPresent:false,geminiKeyPresent:false,user_id:null,backend_url:''});
@@ -65,7 +68,7 @@
  let localModels=$state<PublicLocalModels>(emptyPublicLocalModels()),localModelBusy=$state(false);
  let integrations=$state<IntegrationStatus>({composioKeyPresent:false,driveConnected:false,driveAccountLabel:'',giphyKeyPresent:false});
  const basicReady=$derived(isBasicDictationReady(speech,permissions.microphone));
- const localCaptureBusy=$derived(phase!=='idle'||Boolean(capture)||Boolean(session)||micTesting);
+ const localCaptureBusy=$derived(updateBusy||phase!=='idle'||Boolean(capture)||Boolean(session)||micTesting);
  const selectedLocalModel=$derived(localModels.models.find(model=>model.id===localModels.selectedModelId));
  const languageNames:Record<string,string>={en:'English',fr:'French',de:'German',es:'Spanish',it:'Italian',pt:'Portuguese',nl:'Dutch',ja:'Japanese',ko:'Korean',zh:'Chinese'};
  function readableLanguage(value:string|undefined){
@@ -99,6 +102,7 @@
  async function cancel(){hudVisible=false;clipboardCopied=false;error='';message='';microphoneQuietWarning='';microphoneLimitWarning='';needsAccessibility=false;clearRecovery();++generation;capture?.cancel();capture=null;const id=session;session=null;phase='idle';voiceReady=false;busy=false;clearPicker();if(id)await invoke('destroy_dictation_cancel',{sessionId:id}).catch(()=>{});}
  function stopMicTest(){++micTestGeneration;clearTimeout(micTestTimer);micTestTimer=undefined;micTestSource?.disconnect();micTestSource=null;micTestStream?.getTracks().forEach(track=>track.stop());micTestStream=null;void micTestContext?.close().catch(()=>{});micTestContext=null;micTesting=false;micTestLevel=0;}
  async function testMicrophone(){
+  if(updateBusy)return;
   if(!native)return nativeOnly();
   if(micTesting){stopMicTest();return;}
   stopMicTest();const testGeneration=micTestGeneration;
@@ -241,6 +245,7 @@
  async function refreshDevices(){devices=(await navigator.mediaDevices.enumerateDevices()).filter(d=>d.kind==='audioinput');}
  async function allowMic(){if(!native)return nativeOnly();try{await invoke('request_microphone_access');permissions=await invoke('get_permission_status');if(permissions.microphone){const stream=await navigator.mediaDevices.getUserMedia({audio:true});stream.getTracks().forEach(t=>t.stop());await refreshDevices();}}catch(e){fail(e)}}
  async function start(value:Start){
+ if(updateBusy){await invoke('destroy_dictation_cancel',{sessionId:value.sessionId});return;}
  if(phase==='recording'||phase==='processing')return;
  stopMicTest();
  if(!user){await invoke('destroy_dictation_cancel',{sessionId:value.sessionId});message='Connect your backend in Settings first.';hudVisible=true;return;}
@@ -324,7 +329,7 @@
   mic='';shortcut='CommandOrControl+Backquote';selectedProvider='local';speechKey='';composioKey='';giphyKey='';clearTimeout(modelPoll);clearTimeout(localModelPoll);
  }
  async function resetLocalData(){
-  if(!native||resetBusy)return;
+  if(!native||resetBusy||updateBusy)return;
   const operation=++resetAction;resetBusy=true;pendingLocalReset=true;error='';stopMicTest();await cancel();connectionRevision++;setAccount(null);
   try{
    const result=await invoke<{reset:boolean;modelsRemoved:boolean}>('public_reset_local_data',{confirmation:true,removeInstalledModels});
@@ -405,7 +410,7 @@
  {#if settingsOpen&&!onboarding}
   <button class="settings-scrim" aria-label="Close Settings" tabindex="-1" onclick={backToHome} transition:fade={{duration:window.matchMedia('(prefers-reduced-motion: reduce)').matches?0:180}}></button>
   <div class="settings-drawer" role="dialog" aria-modal="true" aria-label="Settings" tabindex="-1" use:drawerFocus transition:panelMotion>
-  <Settings initialTab={settingsTab} speech={homeSpeech} {permissions} {shortcut} {devices} {mic} micTestLevel={micTestLevel} micTesting={micTesting} {localModels} {integrations} {native} localBusy={localCaptureBusy||localModelBusy||resetBusy} {user} scope={scope} {vars} {linksJson} deleteConfirm={remoteDeleteConfirm} backendUrl={url} backendToken={token} {connecting} onBack={backToHome} onDownload={(modelId:string)=>void downloadModel(modelId)} onSelectModel={(modelId:string)=>void selectLocalModel(modelId)} onRemoveModel={(modelId:string)=>void removeLocalModel(modelId)} onMic={()=>void testMicrophone()} onShortcutSave={async()=>{try{await invoke('set_shortcut',{value:shortcut});message='Shortcut saved.';}catch(e){fail(e)}}} onShortcutChange={(value:string)=>shortcut=value} onMicChange={(event:Event)=>{mic=(event.currentTarget as HTMLSelectElement).value;localStorage.setItem('destroy.microphone',mic)}} onSaveExtras={()=>void saveExtras()} onVarsChange={(value:string)=>vars=value} onLinksChange={(value:string)=>linksJson=value} onExport={()=>void exportData()} onDeletePrompt={()=>remoteDeleteConfirm=true} onDelete={()=>void deleteData()} onKeepData={()=>remoteDeleteConfirm=false} onResetPrompt={promptLocalReset} onRestartOnboarding={()=>void restartOnboarding()} onModelChange={()=>{if(speech.provider!=='local')openOnboarding();}} onBackendUrl={(value:string)=>url=value} onBackendToken={(value:string)=>token=value} onConnectBackend={()=>void connect()} onConnectDrive={()=>void connectDrive()} onRefreshDrive={()=>void refreshDrive()} onDisconnectDrive={()=>void disconnectDrive()} onSaveComposio={()=>void saveComposio()} onSaveGiphy={()=>void saveGiphy()} onDisconnectGiphy={()=>void disconnectGiphy()} {composioKey} {giphyKey} onComposioKey={(value:string)=>composioKey=value} onGiphyKey={(value:string)=>giphyKey=value} onOpenOnboarding={openOnboarding} />
+  <Settings {updatesEnabled} {updateState} onCheckUpdate={()=>void updater.check()} onInstallUpdate={()=>void updater.install()} onRestartUpdate={()=>void updater.restart()} initialTab={settingsTab} speech={homeSpeech} {permissions} {shortcut} {devices} {mic} micTestLevel={micTestLevel} micTesting={micTesting} {localModels} {integrations} {native} localBusy={localCaptureBusy||localModelBusy||resetBusy} {user} scope={scope} {vars} {linksJson} deleteConfirm={remoteDeleteConfirm} backendUrl={url} backendToken={token} {connecting} onBack={backToHome} onDownload={(modelId:string)=>void downloadModel(modelId)} onSelectModel={(modelId:string)=>void selectLocalModel(modelId)} onRemoveModel={(modelId:string)=>void removeLocalModel(modelId)} onMic={()=>void testMicrophone()} onShortcutSave={async()=>{try{await invoke('set_shortcut',{value:shortcut});message='Shortcut saved.';}catch(e){fail(e)}}} onShortcutChange={(value:string)=>shortcut=value} onMicChange={(event:Event)=>{mic=(event.currentTarget as HTMLSelectElement).value;localStorage.setItem('destroy.microphone',mic)}} onSaveExtras={()=>void saveExtras()} onVarsChange={(value:string)=>vars=value} onLinksChange={(value:string)=>linksJson=value} onExport={()=>void exportData()} onDeletePrompt={()=>remoteDeleteConfirm=true} onDelete={()=>void deleteData()} onKeepData={()=>remoteDeleteConfirm=false} onResetPrompt={promptLocalReset} onRestartOnboarding={()=>void restartOnboarding()} onModelChange={()=>{if(speech.provider!=='local')openOnboarding();}} onBackendUrl={(value:string)=>url=value} onBackendToken={(value:string)=>token=value} onConnectBackend={()=>void connect()} onConnectDrive={()=>void connectDrive()} onRefreshDrive={()=>void refreshDrive()} onDisconnectDrive={()=>void disconnectDrive()} onSaveComposio={()=>void saveComposio()} onSaveGiphy={()=>void saveGiphy()} onDisconnectGiphy={()=>void disconnectGiphy()} {composioKey} {giphyKey} onComposioKey={(value:string)=>composioKey=value} onGiphyKey={(value:string)=>giphyKey=value} onOpenOnboarding={openOnboarding} />
   </div>
  {/if}
  {#if deleteConfirm}

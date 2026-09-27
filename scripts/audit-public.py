@@ -21,7 +21,15 @@ SECRET_PATTERNS = {
 }
 SENSITIVE_SUFFIXES = ('.key', '.p12', '.p8', '.pem', '.sqlite', '.sqlite3', '.db', '.dmg', '.zip', '.tar.gz')
 PUBLIC_BINARY_PATHS = {
+    # Owner-selected app artwork and its desktop sizes, applied 2026-09-26.
+    'apps/desktop/src-tauri/icons/source.png',
+    'apps/desktop/src-tauri/icons/32x32.png',
+    'apps/desktop/src-tauri/icons/64x64.png',
+    'apps/desktop/src-tauri/icons/128x128.png',
+    'apps/desktop/src-tauri/icons/128x128@2x.png',
     'apps/desktop/src-tauri/icons/icon.png',
+    'apps/desktop/src-tauri/icons/icon.icns',
+    'apps/desktop/src-tauri/icons/icon.ico',
     'apps/desktop/public/art/command-surface.png',
     'apps/desktop/public/art/selection-brush.png',
     'apps/desktop/public/art/settings-landscape-v2.png',

@@ -12,6 +12,10 @@ mod integrations;
 mod local_models;
 mod native_audio;
 mod panel_bounds;
+#[cfg(target_arch = "aarch64")]
+mod parakeet;
+#[cfg(not(target_arch = "aarch64"))]
+#[path = "parakeet_unavailable.rs"]
 mod parakeet;
 mod permissions;
 mod public_setup;
@@ -137,6 +141,11 @@ fn notch_log(_message: String) {} // No transcript or preference logging.
 fn list_audio_input_devices() -> Vec<serde_json::Value> {
     vec![]
 } // WebKit selection owns IDs; native bridge isn't used.
+#[tauri::command]
+fn restart_app(app: tauri::AppHandle) {
+    app.state::<panel_bounds::PanelBounds>().flush();
+    app.restart();
+}
 #[tauri::command]
 fn quit_app(app: tauri::AppHandle) {
     app.state::<panel_bounds::PanelBounds>().flush();
@@ -278,7 +287,8 @@ pub fn run() {
                 updater_available,
                 notch_log,
                 list_audio_input_devices,
-                quit_app
+                quit_app,
+                restart_app
             ];
             handler(invoke)
         })

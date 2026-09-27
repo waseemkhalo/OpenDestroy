@@ -11,6 +11,11 @@
   type SettingsTab = "speech" | "system" | "data" | "writing" | "connections";
 
   let {
+    updatesEnabled = false,
+    updateState,
+    onCheckUpdate,
+    onInstallUpdate,
+    onRestartUpdate,
     initialTab = "speech",
     speech,
     permissions,
@@ -326,12 +331,29 @@
                   </div>
                 {/if}
               </div>
+              {#if matchesSearch("app", "updates", "version", "release")}
+                <div class="soft-group" style="margin-top:16px">
+                  <div class="status-row">
+                    <Monitor size={18} strokeWidth={1.6} aria-hidden="true" />
+                    <div class="setting-copy"><strong>App updates</strong><small role="status">{updatesEnabled ? updateState?.message : "Updates are unavailable in this build."}</small></div>
+                    {#if updatesEnabled}
+                      {#if updateState?.phase === "installed"}
+                        <button type="button" onclick={onRestartUpdate}>Restart</button>
+                      {:else if updateState?.phase === "available"}
+                        <button type="button" disabled={localBusy} onclick={onInstallUpdate}>Install &amp; restart</button>
+                      {:else}
+                        <button type="button" disabled={localBusy || updateState?.phase === "checking" || updateState?.phase === "installing"} onclick={onCheckUpdate}>Check for updates</button>
+                      {/if}
+                    {/if}
+                  </div>
+                </div>
+              {/if}
               {#if native && permissions?.microphone && permissions?.accessibility}
                 <p class="system-note"><Check size={14} aria-hidden="true" /> Permissions are ready for direct dictation.</p>
               {:else}
                 <p class="system-note"><ShieldCheck size={14} aria-hidden="true" /> Permission state is reported by the native app; no settings are changed here.</p>
               {/if}
-              {#if !matchesSearch("system", "native", "desktop", "status", "microphone", "permission", "recording", "accessibility", "insertion")}
+              {#if !matchesSearch("system", "native", "desktop", "status", "microphone", "permission", "recording", "accessibility", "insertion", "app", "updates", "version", "release")}
                 <p class="empty-state" role="status">No system settings match “{search}”. <button type="button" onclick={() => search = ""}>Clear search</button></p>
               {/if}
             </section>
