@@ -1,8 +1,9 @@
-name: Prepare signed release draft
+name: Publish signed release
 on:
   workflow_dispatch:
 permissions:
   contents: read
+  deployments: write
 jobs:
   package:
     environment: release
@@ -17,8 +18,10 @@ jobs:
       APPLE_NOTARY_PROFILE: destroy-dictation-notary
       TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.DESTROY_UPDATER_PRIVATE_KEY }}
       TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.DESTROY_UPDATER_PASSWORD }}
-      DESTROY_UPDATER_PUBLIC_KEY: ${{ vars.DESTROY_UPDATER_PUBLIC_KEY }}
-      DESTROY_UPDATE_URL: ${{ vars.DESTROY_UPDATE_URL }}
+      # Installed 0.1.0 apps trust this public key and poll releases/latest.
+      # GitHub does not serve that address for a draft or pre-release.
+      DESTROY_UPDATER_PUBLIC_KEY: ${{ vars.DESTROY_UPDATER_PUBLIC_KEY || 'dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDY5NTkxNjc0NjM4RTQyMzYKUldRMlFvNWpkQlpaYVY3NWR2dnpudk5uMVNqeXdsV1dzL0pwR3NMZnRmNnI0V01tSkRSUGx4Wk8K' }}
+      DESTROY_UPDATE_URL: https://github.com/${{ github.repository }}/releases/latest/download/latest.json
     steps:
       - uses: actions/checkout@v4
         with:
@@ -71,12 +74,13 @@ jobs:
         run: |
           security delete-keychain "$RUNNER_TEMP/destroy-dictation-release.keychain-db" || true
           rm -f "$RUNNER_TEMP/destroy-signing.p12" "$RUNNER_TEMP/destroy-dictation-notary.p8"
-  draft:
+  publish:
     needs: package
     runs-on: ubuntu-latest
     environment: release
     permissions:
       contents: write
+      deployments: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -86,7 +90,7 @@ jobs:
           pattern: release-*
           merge-multiple: true
           path: artifacts
-      - name: Create metadata and draft only
+      - name: Publish the stable release
         env:
           GH_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ github.repository }}
@@ -95,4 +99,6 @@ jobs:
           set -euo pipefail
           VERSION="$(python3 -c 'import json;print(json.load(open("apps/desktop/package.json"))["version"])')"
           python3 scripts/release-metadata.py --repo "$REPOSITORY" --version "$VERSION"
-          gh release create "v$VERSION" artifacts/* --repo "$REPOSITORY" --target "$RELEASE_COMMIT" --draft --title "OpenDestroy $VERSION" --notes-file docs/RELEASE_NOTES.md
+          # A draft or pre-release is excluded from releases/latest, so installed
+          # apps keep getting 404 from the updater feed.
+          gh release create "v$VERSION" artifacts/* --repo "$REPOSITORY" --target "$RELEASE_COMMIT" --latest --title "OpenDestroy $VERSION" --notes-file docs/RELEASE_NOTES.md

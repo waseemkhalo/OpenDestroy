@@ -36,13 +36,41 @@ restore_stapled_app() {
   if [ -d "$DESTROY_MOUNT" ]; then
     hdiutil detach "$DESTROY_MOUNT" -force >/dev/null 2>&1 || true
   fi
-  if [ -d "$DESTROY_DMG_ROOT/OpenDestroy.app" ] && [ ! -d "$DESTROY_APP" ]; then
+  if [ -d "$DESTROY_DMG_ROOT/OpenDestroy.app" ]; then
+    rm -rf "$DESTROY_APP"
     ditto "$DESTROY_DMG_ROOT/OpenDestroy.app" "$DESTROY_APP"
   fi
   rm -rf "$DESTROY_CONFIG_DIR" "$DESTROY_DMG_ROOT"
 }
+# hdiutil appends a format extension when -o does not already end in one, and
+# some macOS versions still append .dmg to a path that already has it.
+write_image() {
+  local source="$1" format="$2" dest="$3"
+  shift 3
+  rm -f "$dest" "${dest}.dmg"
+  hdiutil convert "$source" -format "$format" -o "$dest" "$@"
+  if [ ! -f "$dest" ] && [ -f "${dest}.dmg" ]; then
+    mv "${dest}.dmg" "$dest"
+  fi
+  if [ ! -f "$dest" ]; then
+    echo "hdiutil did not create $dest" >&2
+    exit 1
+  fi
+}
 trap restore_stapled_app EXIT
 ditto "$DESTROY_APP" "$DESTROY_DMG_ROOT/OpenDestroy.app"
+# Archive the stapled app before the DMG bundle. A DMG-only Tauri run rebuilds
+# DESTROY_APP unsigned, and merging that tree back would ship a bad update.
+# COPYFILE_DISABLE keeps AppleDouble files out of the archive; those extra
+# files are not part of the signed bundle and break the installed update.
+COPYFILE_DISABLE=1 tar -czf "artifacts/$DESTROY_BASE.app.tar.gz" -C "$DESTROY_DMG_ROOT" "OpenDestroy.app"
+# The bundler accepts either key contents or a path in TAURI_SIGNING_PRIVATE_KEY;
+# the standalone signer requires its explicit file option for a path.
+if [ -f "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+  (cd apps/desktop && env -u TAURI_SIGNING_PRIVATE_KEY npm run tauri -- signer sign --private-key-path "$TAURI_SIGNING_PRIVATE_KEY" "../../artifacts/$DESTROY_BASE.app.tar.gz")
+else
+  (cd apps/desktop && npm run tauri -- signer sign "../../artifacts/$DESTROY_BASE.app.tar.gz")
+fi
 # Let Tauri create the Finder drag-install window using the checked-in DMG
 # background, window size, and icon positions from tauri.conf.json.
 DESTROY_DMG_DIR="$DESTROY_BUILD_ROOT/$DESTROY_TARGET/release/bundle/dmg"
@@ -53,13 +81,14 @@ if [ ! -f "$DESTROY_BUNDLED_DMG" ]; then
   echo "Tauri did not create the configured DMG for $DESTROY_TARGET" >&2
   exit 1
 fi
+rm -rf "$DESTROY_APP"
 ditto "$DESTROY_DMG_ROOT/OpenDestroy.app" "$DESTROY_APP"
 # A DMG-only bundle run rebuilds the .app (tauri-bundler dmg::bundle_project),
 # so with --no-sign the styled image holds an unsigned copy that notarization
 # rejects. Swap in the notarized, stapled app, keeping the Finder layout.
 DESTROY_RW_DMG="$DESTROY_DMG_ROOT/OpenDestroy-rw.dmg"
 DESTROY_APP_MB="$(du -sm "$DESTROY_DMG_ROOT/OpenDestroy.app" | cut -f1)"
-hdiutil convert "$DESTROY_BUNDLED_DMG" -format UDRW -o "$DESTROY_RW_DMG"
+write_image "$DESTROY_BUNDLED_DMG" UDRW "$DESTROY_RW_DMG"
 hdiutil resize -size "$((DESTROY_APP_MB * 2 + 64))m" "$DESTROY_RW_DMG"
 mkdir -p "$DESTROY_MOUNT"
 hdiutil attach "$DESTROY_RW_DMG" -readwrite -nobrowse -noverify -noautoopen -mountpoint "$DESTROY_MOUNT"
@@ -69,20 +98,11 @@ codesign --verify --deep --strict "$DESTROY_MOUNT/OpenDestroy.app"
 xcrun stapler validate "$DESTROY_MOUNT/OpenDestroy.app"
 hdiutil detach "$DESTROY_MOUNT"
 rm -f "$DESTROY_BUNDLED_DMG"
-hdiutil convert "$DESTROY_RW_DMG" -format UDZO -imagekey zlib-level=9 -o "artifacts/$DESTROY_BASE.dmg"
+write_image "$DESTROY_RW_DMG" UDZO "artifacts/$DESTROY_BASE.dmg" -imagekey zlib-level=9
 codesign --force --sign "$APPLE_SIGNING_IDENTITY" --timestamp "artifacts/$DESTROY_BASE.dmg"
 xcrun notarytool submit "artifacts/$DESTROY_BASE.dmg" --keychain-profile "$APPLE_NOTARY_PROFILE" --wait
 xcrun stapler staple "artifacts/$DESTROY_BASE.dmg"
 xcrun stapler validate "artifacts/$DESTROY_BASE.dmg"
 hdiutil verify "artifacts/$DESTROY_BASE.dmg"
-# Package the stapled app, then sign this exact updater payload with the NEW updater key.
-tar -czf "artifacts/$DESTROY_BASE.app.tar.gz" -C "$(dirname "$DESTROY_APP")" "OpenDestroy.app"
-# The bundler accepts either key contents or a path in TAURI_SIGNING_PRIVATE_KEY;
-# the standalone signer requires its explicit file option for a path.
-if [ -f "$TAURI_SIGNING_PRIVATE_KEY" ]; then
-  (cd apps/desktop && env -u TAURI_SIGNING_PRIVATE_KEY npm run tauri -- signer sign --private-key-path "$TAURI_SIGNING_PRIVATE_KEY" "../../artifacts/$DESTROY_BASE.app.tar.gz")
-else
-  (cd apps/desktop && npm run tauri -- signer sign "../../artifacts/$DESTROY_BASE.app.tar.gz")
-fi
 (cd artifacts && shasum -a 256 "$DESTROY_BASE.dmg" "$DESTROY_BASE.app.tar.gz" > "$DESTROY_BASE.sha256")
 rm "artifacts/$DESTROY_BASE-notary.zip"
