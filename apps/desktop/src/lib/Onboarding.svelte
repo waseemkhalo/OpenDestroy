@@ -105,7 +105,7 @@
     onBackendUrl: (value: string) => void;
     onBackendToken: (value: string) => void;
     onConnectBackend: () => void;
-    onContinue: () => void;
+    onContinue: () => Promise<string | null>;
     onBack: () => void;
     onFinish: () => void;
     onNativeOnly: () => void;
@@ -113,6 +113,7 @@
 
   let selectedIntegration = $state<"giphy" | "composio" | null>(null);
   let advancedOpen = $state(false);
+  let continueFeedback = $state("");
   const steps = ["Speech", "Your Mac", "Connections"];
   const providerCopy: Record<Provider, { title: string; detail: string }> = {
     local: { title: "On this Mac", detail: "Download a model. Audio stays on this Mac." },
@@ -124,7 +125,10 @@
     speech.error || (speech.provider === "local" && speech.modelDownloading ? "Downloading the local model…" : speech.ready && (speech.provider !== "local" || speech.modelReady) ? "Ready." : "Not configured yet.")
   );
   function nativeOnly() { if (!native) onNativeOnly(); }
-  function continueStep() { onContinue(); }
+  async function continueStep() {
+    continueFeedback = "";
+    continueFeedback = (await onContinue()) ?? "";
+  }
 </script>
 
 
@@ -185,6 +189,7 @@
           {#if speech.error || speech.ready || speech.modelDownloading}<p class="setup-status" role="status">{statusText}</p>{/if}
         </div>
       </div>
+      {#if continueFeedback}<p class="continue-feedback" role="alert">{continueFeedback}</p>{/if}
       <div class="step-actions"><button class="quiet" type="button" onclick={() => advancedOpen = true}>Advanced connection</button><button class="primary" type="button" onclick={continueStep}>Continue →</button></div>
     </div>
   {:else if step === 1}
@@ -199,6 +204,7 @@
         </div>
         <p class="notice">The recording HUD stays out of your way. Screen Recording is not required.</p>
       </div>
+      {#if continueFeedback}<p class="continue-feedback" role="alert">{continueFeedback}</p>{/if}
       <div class="step-actions"><button class="quiet" type="button" onclick={onBack}>← Back</button><button class="primary" type="button" onclick={continueStep}>Continue →</button></div>
     </div>
   {:else}
@@ -219,6 +225,7 @@
         <p class="notice">No Destroy account is required. These connections are optional and can be managed in Settings.</p>
       {/if}
       </div>
+      {#if continueFeedback}<p class="continue-feedback" role="alert">{continueFeedback}</p>{/if}
       <div class="step-actions"><button class="quiet" type="button" onclick={onBack}>← Back</button><button class="primary" type="button" onclick={onFinish}>Finish setup →</button></div>
     </div>
   {/if}
@@ -271,6 +278,7 @@
 
   .notice,.privacy-note{display:flex;align-items:flex-start;gap:7px;margin:14px 0;font-size:12px;line-height:1.55;color:#8e8e89}
   .setup-status{margin:2px 0 0;font-size:12px;color:#c9c6bf}
+  .continue-feedback{flex:none;margin:14px 0 0;padding-left:12px;border-left:2px solid #d94c40;color:#f1b4ac;font-size:13px;line-height:1.45}
   .key-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.key-actions span{display:inline-flex;gap:5px;align-items:center;font-size:11px;color:#8e8e89}
   .step-actions{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-top:22px;flex:none}
   .back-link{align-self:flex-start;border:0;background:transparent;color:#c9c6bf;padding:0 0 22px;font-size:13px}.back-link:hover{color:#fff;background:transparent}

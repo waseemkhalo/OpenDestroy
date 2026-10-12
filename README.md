@@ -19,7 +19,7 @@
   <a href="CONTRIBUTING.md">Contributing</a>
 </p>
 
-> **Community preview (0.1.0).** Build it from source today. A signed, notarized installer is not available yet, and real-hardware release checks are still in progress. See [status](#status).
+> **Free Mac preview (0.1.1).** [Download the signed, notarized app](https://github.com/waseemkhalo/OpenDestroy/releases/latest) for Apple Silicon or Intel (macOS 14+), or build it from source. It's early: see [status](#status) for what's still being verified.
 
 <!-- Add a 30–60 second demo GIF or video here, recorded on a real Mac. -->
 
@@ -58,7 +58,9 @@ GIFs use your own [GIPHY](https://developers.giphy.com/) key. Drive search uses 
 
 ## Quick start
 
-**Requirements:** macOS 14+, Xcode Command Line Tools, CMake, Rust stable and Node.js 22+.
+**Download:** get the DMG for your Mac (Apple Silicon or Intel) from the [latest release](https://github.com/waseemkhalo/OpenDestroy/releases/latest), open it and drag OpenDestroy into Applications. Installed copies can update themselves from **Settings**. Parakeet runs on Apple Silicon only; Intel Macs use Whisper or a cloud provider.
+
+**Or build from source.** Requirements: macOS 14+, Xcode Command Line Tools, CMake, Rust stable and Node.js 22+.
 
 ```sh
 git clone https://github.com/waseemkhalo/OpenDestroy.git
@@ -107,12 +109,12 @@ Full details: [Privacy](docs/PRIVACY.md) · [Security](SECURITY.md)
 
 ## Status
 
-Destroy is a **community preview**. The source builds and its automated suites pass. The following are still being verified on real hardware before a signed release:
+OpenDestroy is a **free community preview**. Signed, notarized builds are published on [Releases](https://github.com/waseemkhalo/OpenDestroy/releases), and the source builds with its automated suites passing. Still being verified on real hardware:
 
 - microphone and editor behavior across apps
-- local model speed on Apple Silicon
+- local model speed on Apple Silicon and Intel
 - provider calls
-- installing and updating from a notarized DMG
+- updating an installed copy to a newer signed release
 
 [PARITY.md](docs/PARITY.md) lists every capability with its remaining limits. [VERIFICATION.md](docs/VERIFICATION.md) records what has been tested and how.
 

@@ -31,10 +31,45 @@ xcrun stapler staple "$DESTROY_APP"
 xcrun stapler validate "$DESTROY_APP"
 spctl --assess --type execute --verbose=2 "$DESTROY_APP"
 DESTROY_DMG_ROOT="$(mktemp -d -t destroy-dmg)"
-trap 'rm -rf "$DESTROY_CONFIG_DIR"; rm -rf "$DESTROY_DMG_ROOT"' EXIT
+DESTROY_MOUNT="$DESTROY_DMG_ROOT/mount"
+restore_stapled_app() {
+  if [ -d "$DESTROY_MOUNT" ]; then
+    hdiutil detach "$DESTROY_MOUNT" -force >/dev/null 2>&1 || true
+  fi
+  if [ -d "$DESTROY_DMG_ROOT/OpenDestroy.app" ] && [ ! -d "$DESTROY_APP" ]; then
+    ditto "$DESTROY_DMG_ROOT/OpenDestroy.app" "$DESTROY_APP"
+  fi
+  rm -rf "$DESTROY_CONFIG_DIR" "$DESTROY_DMG_ROOT"
+}
+trap restore_stapled_app EXIT
 ditto "$DESTROY_APP" "$DESTROY_DMG_ROOT/OpenDestroy.app"
-ln -s /Applications "$DESTROY_DMG_ROOT/Applications"
-hdiutil create -volname "OpenDestroy" -srcfolder "$DESTROY_DMG_ROOT" -ov -format UDZO "artifacts/$DESTROY_BASE.dmg"
+# Let Tauri create the Finder drag-install window using the checked-in DMG
+# background, window size, and icon positions from tauri.conf.json.
+DESTROY_DMG_DIR="$DESTROY_BUILD_ROOT/$DESTROY_TARGET/release/bundle/dmg"
+DESTROY_BUNDLED_DMG="$DESTROY_DMG_DIR/OpenDestroy_${DESTROY_VERSION}_${DESTROY_TARGET%%-*}.dmg"
+rm -f "$DESTROY_BUNDLED_DMG"
+(cd apps/desktop && npm run tauri -- bundle --target "$DESTROY_TARGET" --bundles dmg --no-sign)
+if [ ! -f "$DESTROY_BUNDLED_DMG" ]; then
+  echo "Tauri did not create the configured DMG for $DESTROY_TARGET" >&2
+  exit 1
+fi
+ditto "$DESTROY_DMG_ROOT/OpenDestroy.app" "$DESTROY_APP"
+# A DMG-only bundle run rebuilds the .app (tauri-bundler dmg::bundle_project),
+# so with --no-sign the styled image holds an unsigned copy that notarization
+# rejects. Swap in the notarized, stapled app, keeping the Finder layout.
+DESTROY_RW_DMG="$DESTROY_DMG_ROOT/OpenDestroy-rw.dmg"
+DESTROY_APP_MB="$(du -sm "$DESTROY_DMG_ROOT/OpenDestroy.app" | cut -f1)"
+hdiutil convert "$DESTROY_BUNDLED_DMG" -format UDRW -o "$DESTROY_RW_DMG"
+hdiutil resize -size "$((DESTROY_APP_MB * 2 + 64))m" "$DESTROY_RW_DMG"
+mkdir -p "$DESTROY_MOUNT"
+hdiutil attach "$DESTROY_RW_DMG" -readwrite -nobrowse -noverify -noautoopen -mountpoint "$DESTROY_MOUNT"
+rm -rf "$DESTROY_MOUNT/OpenDestroy.app"
+ditto "$DESTROY_DMG_ROOT/OpenDestroy.app" "$DESTROY_MOUNT/OpenDestroy.app"
+codesign --verify --deep --strict "$DESTROY_MOUNT/OpenDestroy.app"
+xcrun stapler validate "$DESTROY_MOUNT/OpenDestroy.app"
+hdiutil detach "$DESTROY_MOUNT"
+rm -f "$DESTROY_BUNDLED_DMG"
+hdiutil convert "$DESTROY_RW_DMG" -format UDZO -imagekey zlib-level=9 -o "artifacts/$DESTROY_BASE.dmg"
 codesign --force --sign "$APPLE_SIGNING_IDENTITY" --timestamp "artifacts/$DESTROY_BASE.dmg"
 xcrun notarytool submit "artifacts/$DESTROY_BASE.dmg" --keychain-profile "$APPLE_NOTARY_PROFILE" --wait
 xcrun stapler staple "artifacts/$DESTROY_BASE.dmg"

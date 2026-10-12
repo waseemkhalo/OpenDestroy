@@ -429,6 +429,10 @@ pub(crate) fn selected_model_ready() -> bool {
     find_model(&selected_model_id_unchecked()).is_some_and(loadable)
 }
 
+pub(crate) fn selected_model_installed() -> bool {
+    find_model(&selected_model_id_unchecked()).is_some_and(installed)
+}
+
 pub(crate) fn selected_model_engine() -> Option<ModelEngine> {
     find_model(&selected_model_id_unchecked()).map(|model| model.engine)
 }

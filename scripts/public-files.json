@@ -67,6 +67,7 @@
     "apps/desktop/src-tauri/icons/icon.png",
     "apps/desktop/src-tauri/icons/icon.icns",
     "apps/desktop/src-tauri/icons/icon.ico",
+    "apps/desktop/src-tauri/icons/dmg-background.png",
     "apps/desktop/src-tauri/src/app_identity.rs",
     "apps/desktop/src-tauri/src/auth.rs",
     "apps/desktop/src-tauri/src/clipboard.rs",

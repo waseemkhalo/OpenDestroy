@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isBasicDictationReady, isSpeechProviderReady, type PublicSpeechStatus } from "./publicSetup";
+import { isBasicDictationReady, isSpeechProviderReady, onboardingContinueIssue, type PublicSpeechStatus } from "./publicSetup";
 
 const shape: PublicSpeechStatus = {
   provider: "local", ready: true, modelReady: true, modelDownloading: false,
@@ -26,5 +26,19 @@ describe("public setup readiness", () => {
   it("does not trust a cached ready flag while the local model is downloading", () => {
     expect(isSpeechProviderReady({ ...shape, modelDownloading: true })).toBe(false);
     expect(isSpeechProviderReady({ ...shape, provider: "openai", modelDownloading: true })).toBe(true);
+  });
+
+  it("explains why Continue cannot advance local setup", () => {
+    expect(onboardingContinueIssue(0, { ...shape, ready: false, modelReady: false }, false))
+      .toBe("Choose and install a local speech model before continuing.");
+    expect(onboardingContinueIssue(0, { ...shape, ready: false, modelReady: false, modelDownloading: true }, false))
+      .toBe("Wait for the local model to finish downloading.");
+    expect(onboardingContinueIssue(0, { ...shape, ready: false, modelReady: false, error: "Model validation failed." }, false))
+      .toBe("Model validation failed.");
+  });
+
+  it("requires the microphone on the Mac step but not Accessibility", () => {
+    expect(onboardingContinueIssue(1, shape, false)).toBe("Allow microphone access before continuing.");
+    expect(onboardingContinueIssue(1, shape, true)).toBeNull();
   });
 });
