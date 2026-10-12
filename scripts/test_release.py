@@ -1,3 +1,4 @@
+import base64
 import json
 import os
 import subprocess
@@ -8,6 +9,11 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 REQUIRED = ['APPLE_SIGNING_IDENTITY', 'DESTROY_UPDATER_PUBLIC_KEY', 'DESTROY_UPDATE_URL', 'TAURI_SIGNING_PRIVATE_KEY']
+SHIPPED_UPDATE_URL = 'https://github.com/waseemkhalo/OpenDestroy/releases/latest/download/latest.json'
+SHIPPED_UPDATER_PUBLIC_KEY = (
+    'dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDY5NTkxNjc0NjM4RTQyMzYK'
+    'UldRMlFvNWpkQlpaYVY3NWR2dnpudk5uMVNqeXdsV1dzL0pwR3NMZnRmNnI0V01tSkRSUGx4Wk8K'
+)
 
 class ReleaseTests(unittest.TestCase):
     def metadata(self, directory):
@@ -39,6 +45,56 @@ class ReleaseTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             output = Path(folder)/'config.json'
             result = subprocess.run([sys.executable, str(ROOT/'scripts/release-config.py'), str(output)], env=env, capture_output=True)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertFalse(output.exists())
+
+    def test_release_configuration_accepts_the_key_and_feed_installed_copies_trust(self):
+        env = {k: v for k, v in os.environ.items() if k not in REQUIRED}
+        env.update({
+            'APPLE_SIGNING_IDENTITY': 'Developer ID Application: Test',
+            'DESTROY_UPDATER_PUBLIC_KEY': SHIPPED_UPDATER_PUBLIC_KEY,
+            'DESTROY_UPDATE_URL': SHIPPED_UPDATE_URL,
+            'TAURI_SIGNING_PRIVATE_KEY': 'test-only',
+        })
+        with tempfile.TemporaryDirectory() as folder:
+            output = Path(folder) / 'config.json'
+            result = subprocess.run([sys.executable, str(ROOT / 'scripts/release-config.py'), str(output)], env=env, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            config = json.loads(output.read_text())
+            updater = config['plugins']['updater']
+            self.assertEqual(updater['pubkey'], SHIPPED_UPDATER_PUBLIC_KEY)
+            self.assertEqual(updater['endpoints'], [SHIPPED_UPDATE_URL])
+            env['DESTROY_UPDATER_PUBLIC_KEY'] = base64.b64decode(SHIPPED_UPDATER_PUBLIC_KEY).decode()
+            output.unlink()
+            result = subprocess.run([sys.executable, str(ROOT / 'scripts/release-config.py'), str(output)], env=env, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            config = json.loads(output.read_text())
+            self.assertEqual(config['plugins']['updater']['pubkey'], SHIPPED_UPDATER_PUBLIC_KEY)
+
+    def test_release_workflow_publishes_the_feed_installed_copies_poll(self):
+        workflow = (ROOT / '.github/workflows/release.yml').read_text()
+        self.assertIn(SHIPPED_UPDATER_PUBLIC_KEY, workflow)
+        self.assertIn('/releases/latest/download/latest.json', workflow)
+        self.assertIn('--latest', workflow)
+        self.assertNotIn('--draft', workflow)
+        self.assertNotIn('--prerelease', workflow)
+
+    def test_release_configuration_rejects_a_different_updater_key_or_feed(self):
+        env = {k: v for k, v in os.environ.items() if k not in REQUIRED}
+        env.update({
+            'APPLE_SIGNING_IDENTITY': 'Developer ID Application: Test',
+            'DESTROY_UPDATER_PUBLIC_KEY': SHIPPED_UPDATER_PUBLIC_KEY,
+            'DESTROY_UPDATE_URL': 'https://github.com/example/other/releases/latest/download/latest.json',
+            'TAURI_SIGNING_PRIVATE_KEY': 'test-only',
+        })
+        with tempfile.TemporaryDirectory() as folder:
+            output = Path(folder) / 'config.json'
+            result = subprocess.run([sys.executable, str(ROOT / 'scripts/release-config.py'), str(output)], env=env, capture_output=True)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertFalse(output.exists())
+            env['DESTROY_UPDATE_URL'] = SHIPPED_UPDATE_URL
+            env['DESTROY_UPDATER_PUBLIC_KEY'] = 'dGhpcyBpcyBub3QgdGhlIHNoaXBwZWQga2V5'
+            result = subprocess.run([sys.executable, str(ROOT / 'scripts/release-config.py'), str(output)], env=env, capture_output=True)
             self.assertNotEqual(result.returncode, 0)
             self.assertFalse(output.exists())
 

@@ -27,7 +27,7 @@ Configure a dedicated updater key pair and a verified repository/feed before ena
 - `TAURI_SIGNING_PRIVATE_KEY` and optional password for updater signatures.
 - `DESTROY_UPDATER_PUBLIC_KEY` and an HTTPS `DESTROY_UPDATE_URL`.
 
-The manual draft workflow describes the corresponding GitHub environment values and imports signing credentials into an ephemeral Keychain. It prepares a draft only. Protect the `release` environment with owner review before storing credentials.
+The release workflow imports signing credentials into an ephemeral Keychain and publishes a stable release. Installed copies check `https://github.com/waseemkhalo/OpenDestroy/releases/latest/download/latest.json`. GitHub does not serve that address for a draft or pre-release. Protect the `release` environment with owner review before storing credentials.
 
 Run `scripts/package-macos.sh` for each target. It verifies Developer ID/hardened runtime, notarizes and staples the app and DMG, verifies Gatekeeper, and signs the stapled updater payload. Never ask a user to disable Gatekeeper.
 
@@ -37,7 +37,7 @@ Generate versioned metadata with:
 python3 scripts/release-metadata.py --repo OWNER/REPOSITORY --version 0.1.0
 ```
 
-Both architecture artifacts must exist before metadata is generated. Metadata generation is not a substitute for notarization and installation evidence. Prepare a GitHub draft, verify clean install plus update behavior, then obtain publication approval. After publication, use `python3 scripts/verify-downloads.py artifacts/release.json` to check the exact public bytes.
+Both architecture artifacts must exist before metadata is generated. Metadata generation is not a substitute for notarization and installation evidence. The release workflow publishes the stable release that `releases/latest` serves to the in-app updater. After publication, use `python3 scripts/verify-downloads.py artifacts/release.json` to check the exact public bytes.
 
 ## Hardware acceptance
 
