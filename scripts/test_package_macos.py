@@ -74,8 +74,11 @@ class PackageMacOSTests(unittest.TestCase):
                 'APPLE_TEAM_ID': 'TESTTEAM',
                 'APPLE_NOTARY_PROFILE': 'test-only',
                 'APPLE_SIGNING_IDENTITY': 'Developer ID Application: Test',
-                'DESTROY_UPDATER_PUBLIC_KEY': 'test-only',
-                'DESTROY_UPDATE_URL': 'https://example.invalid/latest.json',
+                'DESTROY_UPDATER_PUBLIC_KEY': (
+                    'dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDY5NTkxNjc0NjM4RTQyMzYK'
+                    'UldRMlFvNWpkQlpaYVY3NWR2dnpudk5uMVNqeXdsV1dzL0pwR3NMZnRmNnI0V01tSkRSUGx4Wk8K'
+                ),
+                'DESTROY_UPDATE_URL': 'https://github.com/waseemkhalo/OpenDestroy/releases/latest/download/latest.json',
                 'TAURI_SIGNING_PRIVATE_KEY': 'test-only',
                 'TEST_TEAM': team,
                 'TEST_NPM_STATUS': str(npm_status),
